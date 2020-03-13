@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29728.190
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AutoAssembler", "AutoAssembler\AutoAssembler.csproj", "{5AE2F357-2055-407A-94CE-F9C9AF4E6455}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Debug|x64.ActiveCfg = Debug|x64
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Debug|x64.Build.0 = Debug|x64
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Release|x64.ActiveCfg = Release|x64
+		{5AE2F357-2055-407A-94CE-F9C9AF4E6455}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BB9A777B-9FEA-483F-B2B4-52AC3F81DB4B}
+	EndGlobalSection
+EndGlobal
