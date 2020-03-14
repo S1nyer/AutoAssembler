@@ -395,12 +395,6 @@ namespace AutoAssembler
                     catch (FormatException)
                     {
                         long Check = Address;
-                        if (SplitAddr[x].Substring(SplitAddr[x].Length - 4, 4).ToUpper() == ".DLL" || SplitAddr[x].Substring(SplitAddr[x].Length - 4, 4).ToUpper() == ".EXE")
-                        {
-                            Address += GetModuleBaseaddress(SplitAddr[x]);
-                            x++;
-                            continue;
-                        }
                         //寻找全局符号数组
                         foreach (RegisterSymbol symbol in Var.RegisteredSymbols)
                         {
@@ -413,8 +407,14 @@ namespace AutoAssembler
                         }
                         if (Check == Address)
                         {
-                            //未找到到指定符号
-                            return 0;
+                            //未找到到指定符号,判断其是否为模块
+                            Address += GetModuleBaseaddress(SplitAddr[x]);
+                            if(Check == Address)
+                            {
+                                //未找到模块,返回
+                                return 0;
+                            }
+                            x++;
                         }
                     }
                     ++x;

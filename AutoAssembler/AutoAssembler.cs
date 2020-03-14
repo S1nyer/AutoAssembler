@@ -29,7 +29,7 @@ namespace AutoAssembler
             if (!memoryAPI.GetProcessModuleInfo(ProcessName))
             {
                 Var.ErrorState = "GetProcessModuleInfoFailed";
-                Var.AutoAssemble_Error = "Get process module info " + ProcessName + " failed!";
+                Var.AutoAssemble_Error = "Get process" + ProcessName + "'s module info failed!";
                 return false;
             }
             return true;
@@ -142,6 +142,7 @@ namespace AutoAssembler
                 string[] args;
                 if (Substring(Currentline, 0, 6).ToUpper() == "ALLOC(")
                 {
+                    Currentline = Currentline.Replace("\"", "");
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
                     args = regex.Split(Substring(Currentline,seek,size));
@@ -163,7 +164,7 @@ namespace AutoAssembler
                         alloced.AllocName = args[0];
                         try
                         {
-                            alloced.size = Convert.ToInt32(args[1],16);
+                            alloced.size = StrToInt(args[1]);
                         }
                         catch(FormatException)
                         {
@@ -189,7 +190,7 @@ namespace AutoAssembler
                             return false ;
                         }
                         alloced.AllocName = args[0];
-                        alloced.Address = memoryAPI.AllocNearFreeBlock(0, Convert.ToInt32(args[1],16));
+                        alloced.Address = memoryAPI.AllocNearFreeBlock(0, StrToInt(args[1]));
                     }
                     if(args.Length < 2)
                     {
@@ -298,7 +299,7 @@ namespace AutoAssembler
                         s = Currentline.Substring(4, Currentline.Length - 4);
                         try
                         {
-                            x = Convert.ToInt32(s);
+                            x = StrToInt(s);
                         }
                         catch (FormatException)
                         {
@@ -385,7 +386,7 @@ namespace AutoAssembler
                                         {
                                             LabelParentAddress = GetAddressByLabelName(s, labels);
                                         }
-                                        LabelParentAddress = Convert.ToInt64(s, 16);
+                                        LabelParentAddress = Convert.ToInt64(s,16);
                                     }
                                 }
                             }
@@ -486,18 +487,20 @@ namespace AutoAssembler
                 labels.Add(label);
             }
             //执行创建线程操作
+            bool ok = true;
             for(i = 0; i < Threads.Count; ++i)
             {
-                if(memoryAPI.CreateThread(GetAddressByLabelName(Threads[i],labels)) == null)//线程创建失败不会退出当前函数,且函数返回值仍然为真
+                if(memoryAPI.CreateThread(GetAddressByLabelName(Threads[i],labels)) == null)//线程创建失败不会退出当前函数
                 {
                     Var.AutoAssemble_Error = "Create thread failed!";
-                    Var.ErrorState = "CreateThreadFail";
+                    Var.ErrorState = "CreateThreadFailed";
+                    ok = false;
                     continue;
                 }
             }
             //现在将脚本注册的全局符号赋值,汇编脚本处理完毕
             RegisterSymbols(Symbols, labels);
-            return true;
+            return ok;
         }
         private bool RemoveLabelByName(string name,List<MemoryAPI.Label> labels)
         {
@@ -517,6 +520,32 @@ namespace AutoAssembler
             for(int i = 0; i < Lenth; ++i)
             {
                 dest[i] = src[i];
+            }
+        }
+        public long StrToLong(string s)
+        {
+            string number;
+            if(s[0] == '$')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt64(number, 16);
+            }
+            else
+            {
+                return Convert.ToInt64(s);
+            }
+        }
+        public int StrToInt(string s)
+        {
+            string number;
+            if (s[0] == '$')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt32(number, 16);
+            }
+            else
+            {
+                return Convert.ToInt32(s);
             }
         }
         public string[] GetExecuteMode(string Code,bool Enable)

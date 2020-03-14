@@ -1,0 +1,8 @@
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\bin\x64\Release\netstandard2.0\AutoAssembler.deps.json
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\bin\x64\Release\netstandard2.0\AutoAssembler.dll
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\bin\x64\Release\netstandard2.0\AutoAssembler.pdb
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\obj\x64\Release\netstandard2.0\AutoAssembler.csprojAssemblyReference.cache
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\obj\x64\Release\netstandard2.0\AutoAssembler.AssemblyInfoInputs.cache
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\obj\x64\Release\netstandard2.0\AutoAssembler.AssemblyInfo.cs
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\obj\x64\Release\netstandard2.0\AutoAssembler.dll
+C:\Users\Administrator\source\repos\AutoAssembler\AutoAssembler\obj\x64\Release\netstandard2.0\AutoAssembler.pdb
