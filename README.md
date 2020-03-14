@@ -5,8 +5,14 @@ A C# Class library like CE's AutoAssembler<br>
 `感谢这些优秀的开发者们,如有侵权请联系删除!`<br>
 目前此自动汇编引擎支持的脚本命令有 AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread<br>
 关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
-如果你觉得还有缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 一下是一段如何使用此汇编引擎的示范代码:<br>
+如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
+## 下面是注意事项:
+* 它不支持12字节远距离跳转,因为XEDParse汇编指令解析器不支持远距离跳转!比如,你注入代码``jmp 4000000``到内存``7FFFFFFE8BFF``,因为它是远距离跳转,所以自动汇编引擎无法处理此命令.<br>
+* 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
+* 在自动汇编脚本中,如AOBscanmodule,Alloc中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``
+* 自动汇编脚本中,``AOBscanmodule``的第二个参数``ModuleName`` 只能填写模块名,如果你写成``AOBscanmodule(INJECT,"Explorer.EXE" + 1234,48 B9 FF FF FF FF FF FF 00 00)``或``AOBscanmodule(INJECT,Explorer.EXE + 5678,48 B9 FF FF FF FF FF FF 00 00)``最后都相当于``AOBscanmodule(INJECT,Explorer.EXE,48 B9 FF FF FF FF FF FF 00 00)``<br>
+* ``nop 次数``    此命令的参数``次数``必须为10进制数字,``nop a``这种格式是不支持的!
+## 以下是一段如何使用此汇编引擎的示范代码:<br>
 ```c#
 AutoAssembler.AutoAssembler Assembler = new AutoAssembler.AutoAssembler();
 AutoAssembler.MemoryAPI MemoryAPI = new AutoAssembler.MemoryAPI();
@@ -21,8 +27,8 @@ Console.ReadKey();
 如果想要更加具体的了解这个自动汇编引擎如何使用，目录下的Example将详细告诉您如何使用它!<br>
 <br>
 # 您可以自由传播和修改此源码，在遵照下面的约束条件的前提下：
-  1.若他人使用此源码用于违法犯罪行为,本人概不负责,亦不承担任何法律责任!<br>
+  ``1.若他人使用此源码用于违法犯罪行为,本人概不负责,亦不承担任何法律责任!<br>
   2.一切因使用此源码而引致之任何意外、疏忽、合约毁坏、诽谤、版权或知识产权侵犯及其所造成的损失(包括在非官方站点下载此源码而感染电脑病毒)，本人概不负责，亦不承担任何法律责任!<br>
-  3.请保留原作者信息<br>
+  3.请保留原作者信息``<br>
 ## 下面是我的联系方式<br>
-* 邮箱:1149548291@qq.com  注:我可能大部分时间都不会回复,因为我还在上学.
+* 邮箱:``1149548291@qq.com``  注:我可能大部分时间都不会回复,因为我还在上学.
