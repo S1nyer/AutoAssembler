@@ -1,8 +1,8 @@
 # AutoAssembler
 A C# Class library like CE's AutoAssembler<br>
-* 此自动汇编引擎的设计参考了Dark Byte 的[cheat engine](https://github.com/cheat-engine/cheat-engine)并在一定程度上进行了模仿.
-* 此自动汇编引擎使用的汇编指令解析器是x64dbg的[XEDParse](https://github.com/x64dbg/XEDParse).
-    感谢这些优秀的开发者们,如有侵权请联系删除!<br>
+* 此自动汇编引擎的设计参考了Dark Byte 的[cheat engine](https://github.com/cheat-engine/cheat-engine)并在一定程度上进行了模仿.<br>
+* 此自动汇编引擎使用的汇编指令解析器是x64dbg的[XEDParse](https://github.com/x64dbg/XEDParse).<br>
+`感谢这些优秀的开发者们,如有侵权请联系删除!`<br>
 目前此自动汇编引擎支持的脚本命令有 AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread<br>
 关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得还有缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
