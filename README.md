@@ -8,7 +8,7 @@ A C# Class library like CE's AutoAssembler<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
 ## 下面是注意事项:
-* 它不支持12字节远距离跳转,因为XEDParse汇编指令解析器不支持远距离跳转!比如,你注入代码`jmp 4000000`到内存`7FFFFFFE8BFF`,因为它是远距离跳转,所以自动汇编引擎无法处理此命令.<br>
+* XEDParse汇编指令解析器有一些不支持的指令!比如,你注入代码`jmp 4000000`到内存`7FFFFFFE8BFF`,因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
 * 在自动汇编脚本中,如AOBscanmodule,Alloc中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``
 * 自动汇编脚本中,``AOBscanmodule``的第二个参数``ModuleName`` 只能填写模块名,如果你写成``AOBscanmodule(INJECT,"Explorer.EXE" + 1234,48 B9 FF FF FF FF FF FF 00 00)``或``AOBscanmodule(INJECT,Explorer.EXE + 5678,48 B9 FF FF FF FF FF FF 00 00)``最后都相当于``AOBscanmodule(INJECT,Explorer.EXE,48 B9 FF FF FF FF FF FF 00 00)``<br>
