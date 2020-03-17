@@ -148,9 +148,8 @@ namespace AutoAssembler
             {
                 if(AllocName == Var.AllocedMemorys[i].AllocName)
                 {
-                    bool ok = VirtualFreeEx(Var.ProcessHandle, Var.AllocedMemorys[i].Address, Var.AllocedMemorys[i].size, MEM_DECOMMIT);
                     Var.AllocedMemorys.RemoveAt(i);
-                    return ok;
+                    return VirtualFreeEx(Var.ProcessHandle, Var.AllocedMemorys[i].Address, Var.AllocedMemorys[i].size, MEM_DECOMMIT);
                 }
             }
             return false;
