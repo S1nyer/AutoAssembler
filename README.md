@@ -10,9 +10,10 @@ A C# Class library like CE's AutoAssembler<br>
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,你注入代码`jmp 4000000`到内存`7FFFFFFE8BFF`,因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
-* 在自动汇编脚本中,如AOBscanmodule,Alloc中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``
-* 自动汇编脚本中,``AOBscanmodule``的第二个参数``ModuleName`` 只能填写模块名,如果你写成``AOBscanmodule(INJECT,"Explorer.EXE" + 1234,48 B9 FF FF FF FF FF FF 00 00)``或``AOBscanmodule(INJECT,Explorer.EXE + 5678,48 B9 FF FF FF FF FF FF 00 00)``最后都相当于``AOBscanmodule(INJECT,Explorer.EXE,48 B9 FF FF FF FF FF FF 00 00)``<br>
-* `nop 次数`    此命令的参数`次数`必须为10进制数字,`nop a`这种格式是不支持的!
+* 在自动汇编脚本中,如AOBscanmodule,Alloc命令中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``<br>
+* 内存符号是不能起冲突的,如果您在之前的汇编脚本中使用了Alloc(newmem,128)命令,然后在没有释放`newmem`的情况下,在另一个脚本中又使用了Alloc(newmem,128)命令,此时汇编引擎将提示命名冲突,且脚本将不会被执行!<br>
+* `nop 次数`    此命令的参数`次数`必须为10进制数字,`nop a`这种格式是不支持的!<br>
+* 当汇编脚本执行失败时,具体可以通过`GetErrorInfo`函数获取错误信息.
 ## 以下是一段如何使用此汇编引擎的示范代码:<br>
 ```c#
 AutoAssembler.AutoAssembler Assembler = new AutoAssembler.AutoAssembler();
