@@ -52,6 +52,7 @@ namespace AutoAssembler
             public string AllocName;
             public long Address;
             public int size;
+            public bool Zero;
         }
         public struct RegisterSymbol
         {
@@ -142,6 +143,15 @@ namespace AutoAssembler
             }
             return (IntPtr)0;
         }
+        public long AllocMemory(long address,int size)
+        {
+            long value = VirtualAllocEx(Var.ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (value != 0)
+            {
+                return value;
+            }
+            return value;
+        }
         public bool FreeAllocMemory(string AllocName)
         {
             for(int i = 0;i < Var.AllocedMemorys.Count; ++i)
@@ -181,6 +191,10 @@ namespace AutoAssembler
         public long GetModuleSize(string DLLname)
         {
             DLLname = DLLname.ToUpper();
+            DLLname = DLLname.Replace("\"", "");
+            int length;
+            length = DLLname.IndexOf(".") + 4;
+            DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper().Equals(DLLname))
@@ -188,9 +202,8 @@ namespace AutoAssembler
             }
             return 0;
         }
-        public long AllocNearFreeBlock(long Address, int size)
+        public long FindNearFreeBlock(long Address, int size)
         {
-            
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             if (Address == 0)
             {
@@ -266,11 +279,7 @@ namespace AutoAssembler
                 if (oldb > b)
                     return 0;
             }
-            long Ret = VirtualAllocEx(Var.ProcessHandle, result, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (Ret != 0) //内存分配成功，返回分配的内存地址
-                return Ret;
-
-            return 0;
+            return result;
         }
         public long AobScanModule(string Module,string MarkCode)
         {
@@ -289,10 +298,10 @@ namespace AutoAssembler
             //定义模块信息及有关变量
             long BeginAddress, EndAddress,CurrentAddress;
             byte[] Buffer;
-            BeginAddress = GetModuleBaseaddress(Module);
+            BeginAddress = GetAddress(Module);
             if (BeginAddress == 0)
                 return 0;
-            EndAddress = BeginAddress + GetModuleSize(Module);
+            EndAddress = GetModuleBaseaddress(Module) + GetModuleSize(Module);
             CurrentAddress = BeginAddress;
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             while(CurrentAddress < EndAddress)
@@ -415,7 +424,6 @@ namespace AutoAssembler
                                 //未找到模块,返回
                                 return 0;
                             }
-                            x++;
                         }
                     }
                     ++x;

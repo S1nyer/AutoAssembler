@@ -60,13 +60,15 @@ namespace AutoAssembler
             MemoryAPI.Assembler_Parameter Parameters = new MemoryAPI.Assembler_Parameter();
             MemoryAPI.RegisterSymbol Symbol = new MemoryAPI.RegisterSymbol();
             List<MemoryAPI.RegisterSymbol> Symbols = new List<MemoryAPI.RegisterSymbol>();
-            MemoryAPI.AllocedMemory alloced = new MemoryAPI.AllocedMemory();
+            MemoryAPI.AllocedMemory alloc = new MemoryAPI.AllocedMemory();
+            List<MemoryAPI.AllocedMemory> allocs = new List<MemoryAPI.AllocedMemory>();
             MemoryAPI.Define define = new MemoryAPI.Define();
             List<MemoryAPI.Define> defines = new List<MemoryAPI.Define>();
             MemoryAPI.Label label = new MemoryAPI.Label();
             List<MemoryAPI.Label> labels = new List<MemoryAPI.Label>();
             Assembled assembled = new Assembled();
             List<Assembled> assembleds = new List<Assembled>();
+            List<string> registers = new List<string>();
             string Currentline,Currentline2="", s = "";
             int TotalLine,i, j, x;
             Regex regex;
@@ -161,10 +163,10 @@ namespace AutoAssembler
                             Var.AutoAssemble_Error = "Symbol: " + args[0] + " already alloc!";
                             return false;
                         }
-                        alloced.AllocName = args[0];
+                        alloc.AllocName = args[0];
                         try
                         {
-                            alloced.size = StrToInt(args[1]);
+                            alloc.size = StrToInt(args[1]);
                         }
                         catch(FormatException)
                         {
@@ -179,7 +181,8 @@ namespace AutoAssembler
                             Var.ErrorState = "UnknownModule";
                             return false;
                         }
-                        alloced.Address = memoryAPI.AllocNearFreeBlock(NearAddress,alloced.size);
+                        alloc.Zero = false;
+                        alloc.Address = memoryAPI.FindNearFreeBlock(NearAddress,alloc.size);
                     }
                     if(args.Length == 2)
                     {
@@ -189,24 +192,28 @@ namespace AutoAssembler
                             Var.ErrorState = "AllocAlreadyExist";
                             return false ;
                         }
-                        alloced.AllocName = args[0];
-                        alloced.Address = memoryAPI.AllocNearFreeBlock(0, StrToInt(args[1]));
+                        alloc.AllocName = args[0];
+                        alloc.Address = memoryAPI.AllocMemory(0, StrToInt(args[1]));
+                        alloc.Zero = true;
+                        goto end;
                     }
                     if(args.Length < 2)
                     {
                         Var.AutoAssemble_Error = ("Alloc parameters Error!Line number:" + i.ToString() + ",Code:" + Codes[i]);
                         return false;
                     }
-                    if(alloced.Address == 0)
+                    if(alloc.Address == 0)
                     {
+                        Var.AutoAssemble_Error = "Alloc memory " + allocs[i].AllocName + "failed!";
                         Var.ErrorState = "MemoryAllocFailed";
                         return false;
                     }
+                    end:
                     label.Define = true;
-                    label.LabelName = alloced.AllocName;
-                    label.Address = alloced.Address;
+                    label.LabelName = alloc.AllocName;
+                    label.Address = alloc.Address;
                     labels.Add(label);
-                    Var.AllocedMemorys.Add(alloced);
+                    allocs.Add(alloc);
                     continue;
                 }
                 if (Substring(Currentline, 0, 8).ToUpper() == "DEALLOC(")
@@ -250,14 +257,7 @@ namespace AutoAssembler
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
                     s = Currentline.Substring(seek, size).Trim();
-                    if (SymbolExist(s, Var.RegisteredSymbols))
-                    {
-                        Var.ErrorState = "SymbolAlreadyExist";
-                        Var.AutoAssemble_Error = ("The symbol: "+s+" already exist!" + "Line number: " + i.ToString() + ", Code: " + Codes[i]);
-                        return false;
-                    }
-                    Symbol.SymbolName = s;
-                    Symbols.Add(Symbol);
+                    registers.Add(s);
                     continue;
                 }
                 if(Substring(Currentline, 0, 17).ToUpper() == "UNREGISTERSYMBOL(")
@@ -317,8 +317,8 @@ namespace AutoAssembler
                         CurrentAddress += x;
                         continue;
                     }
-                    seek = Currentline.IndexOf("(");//有涉及到类型转换
-                    if(seek != -1)
+                    seek = Currentline.IndexOf("(");
+                    if(seek != -1)//有涉及到类型转换
                     {
                         seek++;
                         size = Currentline.IndexOf(")", seek) - seek;
@@ -456,6 +456,22 @@ namespace AutoAssembler
                 }
                 ByteCopy(Parameters.Bytes, assembledArray[reassembles[i].Reflect2].AssembledBytes, Parameters.AsmLength);
             }
+            //开始分配内存
+            for(i = 0;i < allocs.Count; ++i)
+            {
+                if (allocs[i].Zero == true)
+                {
+                    Var.AllocedMemorys.Add(allocs[i]);
+                    continue;
+                }
+                if (memoryAPI.AllocMemory(allocs[i].Address, allocs[i].size) == 0)
+                {
+                    Var.AutoAssemble_Error = "Alloc memory " + allocs[i].AllocName + "failed!Near Address:"+allocs[i].Address.ToString("x");
+                    Var.ErrorState = "MemoryAllocFailed";
+                    return false;
+                }
+                Var.AllocedMemorys.Add(allocs[i]);
+            }
             //重汇编指令已处理完毕!开始执行写入内存操作
             assembledArray = MergeAssembles(assembledArray);//将分散的汇编指令以区块为标准合并
             for(i = 0;i < assembledArray.Length; ++i)
@@ -499,7 +515,8 @@ namespace AutoAssembler
                 }
             }
             //现在将脚本注册的全局符号赋值,汇编脚本处理完毕
-            RegisterSymbols(Symbols, labels);
+            if (!RegisterSymbols(registers, labels))
+                ok = false;
             return ok;
         }
         private bool RemoveLabelByName(string name,List<MemoryAPI.Label> labels)
@@ -639,28 +656,39 @@ namespace AutoAssembler
             }
             return null;
         }
-        private void RegisterSymbols(List<MemoryAPI.RegisterSymbol> registerSymbols,List<MemoryAPI.Label> labels)
+        private bool RegisterSymbols(List<string> registerSymbols,List<MemoryAPI.Label> labels)
         {
             int SymbolCount = registerSymbols.Count;
             int LabelCount = labels.Count;
             int i = 0;
-            MemoryAPI.RegisterSymbol[] symbols = registerSymbols.ToArray();
+            string[] symbols = registerSymbols.ToArray();
+            MemoryAPI.RegisterSymbol symbol;
             for(i = 0; i < SymbolCount; ++i)
             {
-                for(int x = 0; x < LabelCount; ++x)
+                symbol = new MemoryAPI.RegisterSymbol();
+                if (SymbolExist(registerSymbols[i], Var.RegisteredSymbols))
                 {
-                    if(symbols[i].SymbolName == labels[x].LabelName)
+                    int index = FindSymbolIndex(registerSymbols[i]);
+                    Var.RegisteredSymbols.RemoveAt(index);
+                }
+                for (int x = 0; x < LabelCount; ++x)
+                {
+                    if (symbols[i] == labels[x].LabelName)
                     {
-                        symbols[i].SymbolName = labels[x].LabelName;
-                        symbols[i].Address = labels[x].Address;
+                        symbol.SymbolName = labels[x].LabelName;
+                        symbol.Address = labels[x].Address;
+                        Var.RegisteredSymbols.Add(symbol);
                         break;
                     }
                 }
+                if(symbol.Address == 0)
+                {
+                    Var.ErrorState = "InvalidSymbol";
+                    Var.AutoAssemble_Error = "Cannot find symbol " + registerSymbols[i] + " in this script!";
+                    return false;
+                }
             }
-            for(i = 0; i < symbols.Length; ++i)
-            {
-                Var.RegisteredSymbols.Add(symbols[i]);
-            }
+            return true;
         }
         private void TrimArgs(ref string[] args)
         {
@@ -761,6 +789,18 @@ namespace AutoAssembler
                     return true;
             }
             return false;
+        }
+        private int FindSymbolIndex(string name)
+        {
+            int count = Var.RegisteredSymbols.Count;
+            for(int i = 0; i < count; ++i)
+            {
+                if(Var.RegisteredSymbols[i].SymbolName == name)
+                {
+                    return i;
+                }
+            }
+            return -1;
         }
         private string ReplaceWithDefines(string code,List<MemoryAPI.Define> defines)
         {
