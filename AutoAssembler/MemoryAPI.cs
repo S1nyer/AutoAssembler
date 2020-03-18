@@ -148,8 +148,9 @@ namespace AutoAssembler
             {
                 if(AllocName == Var.AllocedMemorys[i].AllocName)
                 {
+                    bool ok = VirtualFreeEx(Var.ProcessHandle, Var.AllocedMemorys[i].Address, Var.AllocedMemorys[i].size, MEM_DECOMMIT);
                     Var.AllocedMemorys.RemoveAt(i);
-                    return VirtualFreeEx(Var.ProcessHandle, Var.AllocedMemorys[i].Address, Var.AllocedMemorys[i].size, MEM_DECOMMIT);
+                    return ok;
                 }
             }
             return false;
@@ -180,6 +181,10 @@ namespace AutoAssembler
         public long GetModuleSize(string DLLname)
         {
             DLLname = DLLname.ToUpper();
+            DLLname = DLLname.Replace("\"", "");
+            int length;
+            length = DLLname.IndexOf(".") + 4;
+            DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper().Equals(DLLname))
@@ -288,10 +293,10 @@ namespace AutoAssembler
             //定义模块信息及有关变量
             long BeginAddress, EndAddress,CurrentAddress;
             byte[] Buffer;
-            BeginAddress = GetModuleBaseaddress(Module);
+            BeginAddress = GetAddress(Module);
             if (BeginAddress == 0)
                 return 0;
-            EndAddress = BeginAddress + GetModuleSize(Module);
+            EndAddress = GetModuleBaseaddress(Module) + GetModuleSize(Module);
             CurrentAddress = BeginAddress;
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             while(CurrentAddress < EndAddress)
