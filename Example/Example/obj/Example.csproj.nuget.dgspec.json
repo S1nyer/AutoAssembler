@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\Example.csproj": {}
+    "C:\\Users\\Administrator\\source\\repos\\Example\\Example\\Example.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\Example.csproj": {
+    "C:\\Users\\Administrator\\source\\repos\\Example\\Example\\Example.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\Example.csproj",
+        "projectUniqueName": "C:\\Users\\Administrator\\source\\repos\\Example\\Example\\Example.csproj",
         "projectName": "Example",
-        "projectPath": "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\Example.csproj",
+        "projectPath": "C:\\Users\\Administrator\\source\\repos\\Example\\Example\\Example.csproj",
         "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\obj\\",
+        "outputPath": "C:\\Users\\Administrator\\source\\repos\\Example\\Example\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config",
