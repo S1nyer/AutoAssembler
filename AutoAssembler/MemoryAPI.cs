@@ -52,7 +52,6 @@ namespace AutoAssembler
             public string AllocName;
             public long Address;
             public int size;
-            public bool Zero;
         }
         public struct RegisterSymbol
         {
@@ -143,15 +142,6 @@ namespace AutoAssembler
             }
             return (IntPtr)0;
         }
-        public long AllocMemory(long address,int size)
-        {
-            long value = VirtualAllocEx(Var.ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (value != 0)
-            {
-                return value;
-            }
-            return value;
-        }
         public bool FreeAllocMemory(string AllocName)
         {
             for(int i = 0;i < Var.AllocedMemorys.Count; ++i)
@@ -202,8 +192,9 @@ namespace AutoAssembler
             }
             return 0;
         }
-        public long FindNearFreeBlock(long Address, int size)
+        public long AllocNearFreeBlock(long Address, int size)
         {
+            
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             if (Address == 0)
             {
@@ -279,7 +270,11 @@ namespace AutoAssembler
                 if (oldb > b)
                     return 0;
             }
-            return result;
+            long Ret = VirtualAllocEx(Var.ProcessHandle, result, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (Ret != 0) //内存分配成功，返回分配的内存地址
+                return Ret;
+
+            return 0;
         }
         public long AobScanModule(string Module,string MarkCode)
         {
@@ -424,6 +419,7 @@ namespace AutoAssembler
                                 //未找到模块,返回
                                 return 0;
                             }
+                            x++;
                         }
                     }
                     ++x;
