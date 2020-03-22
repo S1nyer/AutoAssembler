@@ -348,7 +348,7 @@ namespace AutoAssembler
                         Codes[i] = Currentline;
                     }
                     x = labels.Count;
-                    Currentline = ReplaceWithDefineLabels(Codes[i], labels);
+                    Currentline = ReplaceWithDefineLabels(Currentline, labels);
                     s = Currentline;
                     for(j = 0; j < x; ++j)//寻找指令有关联的非定义标签
                     {
