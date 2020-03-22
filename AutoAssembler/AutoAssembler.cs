@@ -354,7 +354,7 @@ namespace AutoAssembler
                     {
                         if(Currentline.IndexOf(labels[j].LabelName) != -1)
                         {
-                            long LabelParentAddress =0;
+                            long LabelParentAddress = CurrentAddress;
                             mustbefar = false;
                             long diff;
                             for (int y = i + 1; y < TotalLine; ++y)
