@@ -67,6 +67,7 @@ namespace AutoAssembler
             MemoryAPI.Label label = new MemoryAPI.Label();
             List<MemoryAPI.Label> labels = new List<MemoryAPI.Label>();
             Assembled assembled = new Assembled();
+            Address address = new Address();
             List<Assembled> assembleds = new List<Assembled>();
             List<string> registers = new List<string>();
             string Currentline,Currentline2="", s = "";
@@ -299,7 +300,7 @@ namespace AutoAssembler
                         s = Currentline.Substring(4, Currentline.Length - 4);
                         try
                         {
-                            x = StrToInt(s);
+                            x = Convert.ToInt32(s,16);
                         }
                         catch (FormatException)
                         {
@@ -352,11 +353,11 @@ namespace AutoAssembler
                     s = Currentline;
                     for(j = 0; j < x; ++j)//寻找指令有关联的非定义标签
                     {
-                        if(Currentline.IndexOf(labels[j].LabelName) != -1)
+                        if (Currentline.IndexOf(labels[j].LabelName) != -1)
                         {
                             long LabelParentAddress = CurrentAddress;
                             mustbefar = false;
-                            long diff;
+                            long diff = 0;
                             for (int y = i + 1; y < TotalLine; ++y)
                             {
                                 Currentline2 = ReplaceWithDefines(Codes[y],defines);
@@ -385,10 +386,16 @@ namespace AutoAssembler
                                         if (DefineLabelExist(s, labels))
                                         {
                                             LabelParentAddress = GetAddressByLabelName(s, labels);
+                                            continue;
                                         }
-                                        LabelParentAddress = AddressParse(s,labels,LabelParentAddress);
+                                        LabelParentAddress = AddressParse(s, labels, LabelParentAddress).address;
                                     }
                                 }
+                            }
+                            if (diff < 128)
+                            {
+                                s = Currentline.Replace(labels[j].LabelName, (CurrentAddress + 127).ToString("x"));
+                                continue;
                             }
                             if (mustbefar)
                                 s = Currentline.Replace(labels[j].LabelName, (CurrentAddress + 0x2000FFFFF).ToString("x"));
@@ -417,10 +424,30 @@ namespace AutoAssembler
                     s = Currentline.Substring(0, Currentline.IndexOf(":")).Trim();
                     long reserved = CurrentAddress;//保存现有地址
                     CurrentAddress = memoryAPI.GetAddress(s);
-                    if(CurrentAddress == 0) //不是静态地址和全局符号,是标签
+                    if (CurrentAddress == 0) //不是静态地址和全局符号,是标签
                     {
                         CurrentAddress = reserved;
-                        CurrentAddress = AddressParse(s, labels,CurrentAddress);
+                        address = AddressParse(s, labels, CurrentAddress);
+                        if (address.NoDefineLabel)
+                        {
+                            char[] sp = { '+' };
+                            string[] ss = s.Split(sp);
+                            TrimArgs(ref ss);
+                            if (!RemoveLabelByName(ss[0], labels))
+                            {
+                                Var.AutoAssemble_Error = ("Undefined label: " + ss[0] + " !" + " Code: " + Codes[i]);
+                                Var.ErrorState = "UndefinedLabel";
+                                return false;
+                            }
+                            //初始化一个新Label结构，用于清空结构原有数据
+                            label = new MemoryAPI.Label();
+                            label.LabelName = ss[0];
+                            label.Address = CurrentAddress;
+                            label.Define = true;
+                            labels.Add(label);
+                            continue;
+                        }
+                        CurrentAddress = address.address;
                         if (CurrentAddress == 0)
                         {
                             Var.AutoAssemble_Error = ("Undefined label: " + s + " !" + " Code: " + Codes[i]);
@@ -698,6 +725,73 @@ namespace AutoAssembler
             }
             return str.Substring(start, length);
         }
+        private Address AddressParse(string expression, List<MemoryAPI.Label> labels, long CurrentAddress)
+        {
+            //had bugs,Please fix it up!
+            //漏洞:在寻找父标签时也会
+            long reserved = CurrentAddress;
+            Address address = new Address();
+            address.NoDefineLabel = false;
+            try
+            {
+                address.address = Convert.ToInt64(expression, 16);
+                return address;
+            }
+            catch (FormatException)
+            {
+
+            }
+            if (expression.IndexOf("+") != -1)
+            {//有涉及到加法运算
+                char[] sp = { '+' };
+                string[] ss = expression.Split(sp);
+                TrimArgs(ref ss);
+                long addr;
+                for (int i = 0; i < ss.Length; ++i)
+                {
+                    try
+                    {
+                        addr = Convert.ToInt64(ss[i], 16);
+                        CurrentAddress += addr;
+                    }
+                    catch (FormatException)
+                    {//不是数字,应为标签
+                        CurrentAddress = GetAddressByLabelName(ss[i], labels);
+                        if (CurrentAddress == 0)
+                        {
+                            CurrentAddress = reserved;
+                            address.NoDefineLabel = true;
+                            continue;
+                        }
+                    }
+                }
+                address.address = CurrentAddress;
+                return address;
+            }
+            //不涉及到加法运算
+            try
+            {
+                CurrentAddress = Convert.ToInt64(expression, 16);
+            }
+            catch (FormatException)
+            {//非静态地址
+                CurrentAddress = GetAddressByLabelName(expression, labels);
+                if (CurrentAddress == 0)
+                {
+                    address.address = reserved;
+                    address.NoDefineLabel = true;
+                    return address;
+                }
+                address.address = CurrentAddress;
+                return address;
+            }
+            return address;
+        }
+        struct Address
+        {
+            public long address;
+            public bool NoDefineLabel;
+        }
         private Assembled[] MergeAssembles(Assembled[] assembleds)
         {
             byte[] Bytes;
@@ -769,88 +863,6 @@ namespace AutoAssembler
                 }
             }
             return assembledBlock.ToArray();
-        }
-        private long AddressParse(string expression,List<MemoryAPI.Label> labels,long CurrentAddress)
-        {
-            long reserved = CurrentAddress;
-            MemoryAPI.Label label;
-            try
-            {
-                CurrentAddress = Convert.ToInt64(expression,16);
-                return CurrentAddress;
-            }
-            catch (FormatException)
-            {
-
-            }
-            if (expression.IndexOf("+") != -1)
-            {//有涉及到加法运算
-                char[] sp = { '+' };
-                string[] ss = expression.Split(sp);
-                TrimArgs(ref ss);
-                long addr;
-                for (int i = 0; i < ss.Length; ++i)
-                {
-                    try
-                    {
-                        addr = Convert.ToInt64(ss[i], 16);
-                        CurrentAddress += addr;
-                    }
-                    catch (FormatException)
-                    {//不是数字,应为标签
-                        CurrentAddress = GetAddressByLabelName(ss[i], labels);
-                        if (CurrentAddress == 0)
-                        {
-                            CurrentAddress = reserved;
-                            if (!RemoveLabelByName(ss[i], labels))
-                            {
-                                /*
-                                Var.AutoAssemble_Error = ("Undefined label: " + s + " !" + " Code: " + Codes[i]);
-                                Var.ErrorState = "UndefinedLabel";
-                                return 0;
-                                */
-                            }
-                            //初始化一个新Label结构，用于清空结构原有数据
-                            label = new MemoryAPI.Label();
-                            label.LabelName = ss[i];
-                            label.Address = CurrentAddress;
-                            label.Define = true;
-                            labels.Add(label);
-                            continue;
-                        }
-                    }
-                }
-                return CurrentAddress;
-            }
-            //不涉及到加法运算
-            try
-            {
-                CurrentAddress = Convert.ToInt64(expression, 16);
-            }
-            catch (FormatException)
-            {//非静态地址
-                CurrentAddress = GetAddressByLabelName(expression, labels);
-                if (CurrentAddress == 0)
-                {
-                    CurrentAddress = reserved;
-                    if (!RemoveLabelByName(expression, labels))
-                    {
-                        /*
-                        Var.AutoAssemble_Error = ("Undefined label: " + s + " !" + " Code: " + Codes[i]);
-                        Var.ErrorState = "UndefinedLabel";
-                        return 0;
-                        */
-                    }
-                    //初始化一个新Label结构，用于清空结构原有数据
-                    label = new MemoryAPI.Label();
-                    label.LabelName = expression;
-                    label.Address = CurrentAddress;
-                    label.Define = true;
-                    labels.Add(label);
-                }
-                return CurrentAddress;
-            }
-            return 0;
         }
         private bool DefineExist(string name,List<MemoryAPI.Define> defines)
         {

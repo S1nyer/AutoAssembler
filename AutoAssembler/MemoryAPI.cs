@@ -411,7 +411,6 @@ namespace AutoAssembler
                             if (symbol.SymbolName == SplitAddr[x])
                             {
                                 Address += symbol.Address;
-                                ++x;
                                 break;
                             }
                         }
