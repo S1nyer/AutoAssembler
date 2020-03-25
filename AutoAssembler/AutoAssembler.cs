@@ -727,8 +727,6 @@ namespace AutoAssembler
         }
         private Address AddressParse(string expression, List<MemoryAPI.Label> labels, long CurrentAddress)
         {
-            //had bugs,Please fix it up!
-            //漏洞:在寻找父标签时也会
             long reserved = CurrentAddress;
             Address address = new Address();
             address.NoDefineLabel = false;

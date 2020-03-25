@@ -431,7 +431,11 @@ namespace AutoAssembler
                 {
                     return Address;
                 }
-                Address = ReadMemoryInt32(Address);
+                if(!ReadMemoryInt64(Address,ref Address))
+                {
+                    Var.ErrorState = "ReadMemoryError";
+                    return 0;
+                }
             }
             return Address;
         }
@@ -442,33 +446,65 @@ namespace AutoAssembler
                 return Buffer;
             return null;
         }
-        public int ReadMemoryInt32(long address)
+        public bool ReadMemoryByte(long address,ref byte buffer)
+        {
+            byte[] Bytes = new byte[1];
+            if (ReadMemoryByteSet(Var.ProcessHandle, address, Bytes, 1, 0))
+            {
+                buffer = Bytes[0];
+                return true;
+            }
+            return false;
+        }
+        public bool ReadMemoryInt16(long address, ref short buffer)
+        {
+            byte[] bytes = new byte[4];
+            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 2, 0))
+            {
+                buffer = BitConverter.ToInt16(bytes, 0);
+                return true;
+            }
+            return false;
+        }
+        public bool ReadMemoryInt32(long address,ref int buffer)
         {
             byte[] bytes = new byte[4];
             if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
-                return BitConverter.ToInt32(bytes,0);
-            return 0;
+            {
+                buffer = BitConverter.ToInt32(bytes, 0);
+                return true;
+            }
+            return false;
         }
-        public long ReadMemoryInt64(long address)
+        public bool ReadMemoryInt64(long address,ref long buffer)
         {
             byte[] bytes = new byte[8];
             if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
-                return BitConverter.ToInt64(bytes, 0);
-            return 0;
+            {
+                buffer = BitConverter.ToInt64(bytes, 0);
+                return true;
+            }
+            return false;
         }
-        public float ReadMemoryFloat(long address)
+        public bool ReadMemoryFloat(long address,ref float buffer)
         {
             byte[] bytes = new byte[4];
             if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
-                return BitConverter.ToSingle(bytes, 0);
-            return 0;
+            {
+                buffer = BitConverter.ToSingle(bytes, 0);
+                return true;
+            }
+            return false;
         }
-        public double ReadMemoryDouble(long address)
+        public bool ReadMemoryDouble(long address,ref double buffer)
         {
             byte[] bytes = new byte[8];
             if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
-                return BitConverter.ToDouble(bytes, 0);
-            return 0;
+            {
+                buffer = BitConverter.ToDouble(bytes, 0);
+                return true;
+            }
+            return false;
         }
         /// <summary> 
         ///  向给出的地址读取文本,长度若设定为0,则自动读取到字符串0x0结尾(自动读取最多读取1024个字节)
@@ -532,33 +568,36 @@ namespace AutoAssembler
         {
             return WriteMemoryByteSet(Var.ProcessHandle, address, Bytes, Bytes.Length, 0);
         }
+        public bool WriteMemoryByte(long address,byte Byte)
+        {
+            byte[] b = { Byte };
+            return WriteMemoryByteSet(Var.ProcessHandle, address,b, 1, 0);
+        }
+        public bool WriteMemoryInt16(long address,short value)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 2, 0);
+        }
         public bool WriteMemoryInt32(long address,int value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            if (WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
-                return true;
-            return false;
+            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0);
+
         }
         public bool WriteMemoryInt64(long address,long value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            if (WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
-                return true;
-            return false;
+            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0);
         }
         public bool WriteMemoryFloat(long address,float value)
         {
-            byte[] bytes = new byte[4];
-            if (WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
-                return true;
-            return false;
+            byte[] bytes = BitConverter.GetBytes(value);
+            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0);
         }
         public bool WriteMemoryDouble(long address,double value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            if (WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
-                return true;
-            return false;
+            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0);
         }
         /// <summary> 
         ///  向给出的地址写入文本，会自动添加结尾 0x00
