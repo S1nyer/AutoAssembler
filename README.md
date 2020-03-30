@@ -14,6 +14,7 @@ A C# Class library like CE's AutoAssembler<br>
 * 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
 * 在自动汇编脚本中,如AOBscanmodule,Alloc命令中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``<br>
 * 内存符号是不能起冲突的,如果您在之前的汇编脚本中使用了Alloc(newmem,128)命令,然后在没有释放`newmem`的情况下,在另一个脚本中又使用了Alloc(newmem,128)命令,此时汇编引擎将提示命名冲突,且脚本将不会被执行!<br>
+* 自动汇编引擎目前不会减法,在汇编脚本中他只支持`Label + Offset:`或`Address + Offset:`,同时`GetAddress`函数也不支持减法,`GetAddress("GlobalSymbol - Offset")`是错误的使用方法!<br>
 * 当汇编脚本执行失败时,具体可以通过`GetErrorInfo`函数获取详细错误信息.
 ## 以下是一段如何使用此汇编引擎的示范代码:<br>
 ```c#
