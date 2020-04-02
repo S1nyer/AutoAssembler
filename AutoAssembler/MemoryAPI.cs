@@ -507,62 +507,36 @@ namespace AutoAssembler
             return false;
         }
         /// <summary> 
-        ///  向给出的地址读取文本,长度若设定为0,则自动读取到字符串0x0结尾(自动读取最多读取1024个字节)
+        ///  向给出的地址读取文本,字节长度若设定为0,则自动读取到字符串结尾(自动读取最多读取1024个字节)
         /// </summary> 
-        /// <param name="Coding">读取文本的编码格式,0 为ASCII,1 为Unicode</param>
-        public string ReadMemoryString(long address,int length,int Coding)
+        /// <param name="encoding">读取文本的编码格式</param>
+        public string ReadMemoryString(long address,int Byteslength,Encoding encoding)
         {
-            int size;
             Encoding encode;
             byte[] bytes;
-            if (Coding == Unicode)
-            {
-                encode = Encoding.Unicode;
-                size = length * 2;
-            }
-            else
-            {
-                encode = Encoding.ASCII;
-                size = length;
-            }
-            if(length == 0)
+            if(Byteslength == 0)
             {
                 bytes = new byte[1024];
                 if (!ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 1024, 0))
                 {
                     return "";
                 }
-                if(Coding == 0)
+                for (int i = 0; i < 1024; ++i)
                 {
-                    for (int i = 0; i < 1024; ++i)
+                    if (bytes[i] == 0 && bytes[i + 1] == 0)
                     {
-                        if (bytes[i] == 0)
-                        {
-                            byte[] Copy = new byte[i];
-                            ByteCopy(bytes, Copy, i);
-                            return encode.GetString(Copy);
-                        }
-                    }
-                }
-                else
-                {
-                    for (int i = 0; i < 1024; ++i)
-                    {
-                        if (bytes[i] == 0 && bytes[i + 1] == 0)
-                        {
-                            byte[] Copy = new byte[i + 1];
-                            ByteCopy(bytes, Copy, i + 1);
-                            return encode.GetString(Copy);
-                        }
+                        byte[] Copy = new byte[i + 1];
+                        ByteCopy(bytes, Copy, i + 1);
+                        return encoding.GetString(Copy);
                     }
                 }
             }
-            bytes = new byte[size];
-            if(!ReadMemoryByteSet(Var.ProcessHandle, address, bytes, size, 0))
+            bytes = new byte[Byteslength];
+            if (!ReadMemoryByteSet(Var.ProcessHandle, address, bytes, Byteslength, 0))
             {
                 return "";
             }
-            return encode.GetString(bytes);
+            return encoding.GetString(bytes);
         }
         public bool WriteMemoryByteSet(long address,byte[] Bytes)
         {
@@ -600,31 +574,16 @@ namespace AutoAssembler
             return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0);
         }
         /// <summary> 
-        ///  向给出的地址写入文本，会自动添加结尾 0x00
+        ///  向给出的地址写入文本，会自动添加字串结尾
         /// </summary> 
-        /// <param name="Coding">写入字符的编码格式,0 为ASCII,1 为Unicode</param>
-        public bool WriteMemoryString(long address,string text, int Coding)
+        /// <param name="encoding">写入字符的编码格式</param>
+        public bool WriteMemoryString(long address,string text, Encoding encoding)
         {
-            int size = text.Length;
-            Encoding encode;
-            byte[] bytes;
-            if (Coding == Unicode)
-            {
-                size *= 2;
-                bytes = new byte[size + 2];
-                bytes[bytes.Length - 1] = 0;
-                bytes[bytes.Length - 2] = 0;
-                encode = Encoding.Unicode;
-            }
-            else
-            {
-                bytes = new byte[size + 1];
-                bytes[bytes.Length - 1] = 0;
-                encode = Encoding.ASCII;
-            }
-            byte[] copy = encode.GetBytes(text);
-            copy.CopyTo(bytes, 0);
-            if (!WriteMemoryByteSet(Var.ProcessHandle, address, bytes, bytes.Length, 0))
+            byte[] Copy = encoding.GetBytes(text);
+            int size = Copy.Length + 2;
+            byte[] Bytes = new byte[size];
+            Copy.CopyTo(Bytes, 0);
+            if (!WriteMemoryByteSet(Var.ProcessHandle, address, Bytes, Bytes.Length, 0))
             {
                 return false;
             }
