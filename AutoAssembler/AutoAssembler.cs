@@ -58,7 +58,6 @@ namespace AutoAssembler
             MemoryAPI.Reassemble reassemble = new MemoryAPI.Reassemble();
             List<MemoryAPI.Reassemble> reassembles = new List<MemoryAPI.Reassemble>();
             MemoryAPI.Assembler_Parameter Parameters = new MemoryAPI.Assembler_Parameter();
-            MemoryAPI.RegisterSymbol Symbol = new MemoryAPI.RegisterSymbol();
             List<MemoryAPI.RegisterSymbol> Symbols = new List<MemoryAPI.RegisterSymbol>();
             MemoryAPI.AllocedMemory alloc = new MemoryAPI.AllocedMemory();
             List<MemoryAPI.AllocedMemory> allocs = new List<MemoryAPI.AllocedMemory>();
@@ -737,9 +736,8 @@ namespace AutoAssembler
             }
             catch (FormatException)
             {
-
             }
-            if (expression.IndexOf("+") != -1)
+            if (expression.IndexOf('+') != -1)
             {//有涉及到加法运算
                 char[] sp = { '+' };
                 string[] ss = expression.Split(sp);
@@ -747,42 +745,41 @@ namespace AutoAssembler
                 long addr;
                 for (int i = 0; i < ss.Length; ++i)
                 {
-                    try
+                    CurrentAddress = GetAddressByLabelName(ss[i], labels);
+                    if (CurrentAddress == 0)
                     {
-                        addr = Convert.ToInt64(ss[i], 16);
-                        CurrentAddress += addr;
-                    }
-                    catch (FormatException)
-                    {//不是数字,应为标签
-                        CurrentAddress = GetAddressByLabelName(ss[i], labels);
-                        if (CurrentAddress == 0)
+                        try
                         {
+                            addr = Convert.ToInt64(ss[i], 16);
+                            CurrentAddress += addr;
+                        }
+                        catch (FormatException)
+                        {//不是数字,应为未定义标签
                             CurrentAddress = reserved;
                             address.NoDefineLabel = true;
                             continue;
-                        }
+                        } 
                     }
                 }
                 address.address = CurrentAddress;
                 return address;
             }
             //不涉及到加法运算
-            try
+            CurrentAddress = GetAddressByLabelName(expression, labels);
+            if (CurrentAddress == 0)
             {
-                CurrentAddress = Convert.ToInt64(expression, 16);
-            }
-            catch (FormatException)
-            {//非静态地址
-                CurrentAddress = GetAddressByLabelName(expression, labels);
-                if (CurrentAddress == 0)
+                try
                 {
+                    CurrentAddress = Convert.ToInt64(expression, 16);
+                }
+                catch (FormatException)
+                {//非静态地址
                     address.address = reserved;
                     address.NoDefineLabel = true;
                     return address;
                 }
-                address.address = CurrentAddress;
-                return address;
             }
+            address.address = CurrentAddress;
             return address;
         }
         struct Address

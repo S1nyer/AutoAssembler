@@ -179,7 +179,7 @@ namespace AutoAssembler
             DLLname = DLLname.ToUpper();
             DLLname = DLLname.Replace("\"", "");
             int length;
-            length = DLLname.IndexOf(".") + 4;
+            length = DLLname.IndexOf('.') + 4;
             DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
@@ -193,7 +193,7 @@ namespace AutoAssembler
             DLLname = DLLname.ToUpper();
             DLLname = DLLname.Replace("\"", "");
             int length;
-            length = DLLname.IndexOf(".") + 4;
+            length = DLLname.IndexOf('.') + 4;
             DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
@@ -397,30 +397,31 @@ namespace AutoAssembler
                 int x = 0;
                 while (x < SplitAddr.Length)
                 {
+                    long Check = Address;
                     SplitAddr[x] = SplitAddr[x].Trim();
-                    try
+                    //寻找全局符号数组
+                    foreach (RegisterSymbol symbol in Var.RegisteredSymbols)
                     {
-                        Address += Convert.ToInt64(SplitAddr[x], 16);
-                    }
-                    catch (FormatException)
-                    {
-                        long Check = Address;
-                        //寻找全局符号数组
-                        foreach (RegisterSymbol symbol in Var.RegisteredSymbols)
+                        if (symbol.SymbolName == SplitAddr[x])
                         {
-                            if (symbol.SymbolName == SplitAddr[x])
-                            {
-                                Address += symbol.Address;
-                                break;
-                            }
+                            Address += symbol.Address;
+                            break;
                         }
+                    }
+                    if (Check == Address)
+                    {
+                        //未找到到指定符号,判断其是否为模块
+                        Address += GetModuleBaseaddress(SplitAddr[x]);
                         if (Check == Address)
                         {
-                            //未找到到指定符号,判断其是否为模块
-                            Address += GetModuleBaseaddress(SplitAddr[x]);
-                            if(Check == Address)
+                            //未找到模块,判断是否为静态地址
+                            try
                             {
-                                //未找到模块,返回
+                                Address += Convert.ToInt64(SplitAddr[x], 16);
+                            }
+                            catch (FormatException)
+                            {
+                                //非全局符号,模块及静态地址
                                 return 0;
                             }
                         }
@@ -512,7 +513,6 @@ namespace AutoAssembler
         /// <param name="encoding">读取文本的编码格式</param>
         public string ReadMemoryString(long address,int Byteslength,Encoding encoding)
         {
-            Encoding encode;
             byte[] bytes;
             if(Byteslength == 0)
             {
