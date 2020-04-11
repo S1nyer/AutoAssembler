@@ -8,8 +8,8 @@ A C# Class library like CE's AutoAssembler<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
 ## 下面是注意事项:
-* XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>``7FFFFFFE8BFF:``<br>``   jmp 4000000``<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
-* `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符只能是`??`，且不支持半字节通配。例如`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ** FF FF 00 00)`和`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
+* XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
+* `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
 	* 正确的示范:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?? FF FF 00 00)`
 * 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
 * 在自动汇编脚本中,如AOBscanmodule,Alloc命令中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``<br>

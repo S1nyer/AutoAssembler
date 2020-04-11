@@ -729,14 +729,6 @@ namespace AutoAssembler
             long reserved = CurrentAddress;
             Address address = new Address();
             address.NoDefineLabel = false;
-            try
-            {
-                address.address = Convert.ToInt64(expression, 16);
-                return address;
-            }
-            catch (FormatException)
-            {
-            }
             if (expression.IndexOf('+') != -1)
             {//有涉及到加法运算
                 char[] sp = { '+' };

@@ -288,7 +288,7 @@ namespace AutoAssembler
             if (MarkCode.Replace(" ", "").Length % 2 != 0)
                 return 0;
             //定义Sunday匹配算法所需的变量
-            int[] CodeArray = HexStringToIntArray(MarkCode);
+            short[] CodeArray = HexStringToIntArray(MarkCode);
             int i, j, k;
             i = j = 0;
             int BufferLen, CodeLen;
@@ -361,25 +361,25 @@ namespace AutoAssembler
                 dest[i] = src[i];
             }
         }
-        private int[] HexStringToIntArray(string HexString)
+        private short[] HexStringToIntArray(string HexString)
         {
             HexString = HexString.Replace(" ", "");
             if (HexString.Length % 2 != 0)
                 return null;
             int times = HexString.Length / 2;
-            int[] CopyBytes = new int[times];
+            short[] CopyBytes = new short[times];
             string[] HexArray = new string[times];
             int cur = 0;
             for (int i = 0; i < times; i++)
             {
                 HexArray[i] = HexString.Substring(cur, 2);
-                if (HexArray[i] == "??")
+                if (HexArray[i] == "??" || HexArray[i] == "**")
                 {
                     CopyBytes[i] = 256;
                     cur += 2;
                     continue;
                 }
-                CopyBytes[i] = (byte)Convert.ToInt16(HexArray[i], 16);
+                CopyBytes[i] = Convert.ToByte(HexArray[i], 16);
                 cur += 2;
             }
             return CopyBytes;
