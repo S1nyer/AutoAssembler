@@ -127,6 +127,85 @@ namespace AutoAssembler
             Assemble(ref parameter);
             return parameter;
         }
+        public enum OperationType
+        {
+            Add = 0,
+            Sub = 1,
+            Mul = 2
+        };
+        public struct Number
+        {
+            public string Value;
+            public OperationType Type;
+        }
+        public Number[] OperationParse(string Exp)
+        {
+            Number number;
+            int[] pos = new int[3];
+            bool flag;
+            int current = 0, lenth, min;
+            pos[0] = Exp.IndexOf('+');
+            pos[1] = Exp.IndexOf('-');
+            pos[2] = Exp.IndexOf('*');
+            flag = pos[0] != -1 || pos[1] != -1 || pos[2] != -1;
+            if (!flag)
+            {
+                number.Value = Exp.Trim();
+                number.Type = OperationType.Add;
+                Number[] temp = { number };
+                return temp;
+            }
+            List<Number> numbers = new List<Number>();
+            min = MinIndex(pos);
+            if (pos[min] == 0) goto label;
+            number.Value = Exp.Substring(0, pos[min]).Trim();
+            number.Type = OperationType.Add;
+            numbers.Add(number);
+            current = pos[min] + 1;
+        label:
+            do
+            {
+                pos[0] = Exp.IndexOf('+', current);
+                pos[1] = Exp.IndexOf('-', current);
+                pos[2] = Exp.IndexOf('*', current);
+                flag = pos[0] != -1 || pos[1] != -1 || pos[2] != -1;
+                if (!flag) goto end;
+                number.Type = (OperationType)min;
+                min = MinIndex(pos);
+                lenth = pos[min] - current;
+                number.Value = Exp.Substring(current, lenth).Trim();
+                numbers.Add(number);
+                current = pos[min] + 1;
+            } while (flag);
+        end:
+            if (current != Exp.Length)
+            {
+                lenth = Exp.Length - current;
+                number.Type = (OperationType)min;
+                number.Value = Exp.Substring(current, lenth).Trim();
+                numbers.Add(number);
+                return numbers.ToArray();
+            }
+            return numbers.ToArray();
+        }
+        private int MinIndex(int[] array)
+        {
+            int index = 0;
+            for (int i = 0; i < array.Length; ++i)
+            {
+                if (array[index] == -1 && array[i] > array[index])
+                {
+                    index = i;
+                    continue;
+                }
+                if (array[i] > 0 && array[index] > array[i])
+                {
+                    index = i;
+                    continue;
+                }
+            }
+            return index;
+        }
         public IntPtr CreateThread(long address)
         {
             int dw = 0;
@@ -178,9 +257,6 @@ namespace AutoAssembler
         {
             DLLname = DLLname.ToUpper();
             DLLname = DLLname.Replace("\"", "");
-            int length;
-            length = DLLname.IndexOf('.') + 4;
-            DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper() == DLLname)
@@ -192,9 +268,6 @@ namespace AutoAssembler
         {
             DLLname = DLLname.ToUpper();
             DLLname = DLLname.Replace("\"", "");
-            int length;
-            length = DLLname.IndexOf('.') + 4;
-            DLLname = DLLname.Substring(0, length);
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper().Equals(DLLname))
@@ -386,38 +459,37 @@ namespace AutoAssembler
         }
         public long GetAddress(string Expression)
         {
-            char[] a = { '[', ']' };
+            Expression = Expression.Replace("[", "");
+            char[] a = { ']' };
             string[] SplitExps = Expression.Split(a, StringSplitOptions.RemoveEmptyEntries);
             long Address = 0;
+            long temp = 0;
             for (int i = 0; i < SplitExps.Length; i++)
             {
-                char[] b = { '+' };
-                SplitExps[i] = SplitExps[i].Trim();
-                string[] SplitAddr = SplitExps[i].Split(b, StringSplitOptions.RemoveEmptyEntries);
+                Number[] numbers = OperationParse(SplitExps[i]);
                 int x = 0;
-                while (x < SplitAddr.Length)
+                while (x < numbers.Length)
                 {
-                    long Check = Address;
-                    SplitAddr[x] = SplitAddr[x].Trim();
+                    temp = 0;
                     //寻找全局符号数组
                     foreach (RegisterSymbol symbol in Var.RegisteredSymbols)
                     {
-                        if (symbol.SymbolName == SplitAddr[x])
+                        if (symbol.SymbolName == numbers[x].Value)
                         {
-                            Address += symbol.Address;
+                            temp = symbol.Address;
                             break;
                         }
                     }
-                    if (Check == Address)
+                    if (temp == 0)
                     {
                         //未找到到指定符号,判断其是否为模块
-                        Address += GetModuleBaseaddress(SplitAddr[x]);
-                        if (Check == Address)
+                        temp = GetModuleBaseaddress(numbers[x].Value);
+                        if (temp == 0)
                         {
                             //未找到模块,判断是否为静态地址
                             try
                             {
-                                Address += Convert.ToInt64(SplitAddr[x], 16);
+                                temp = Convert.ToInt64(numbers[x].Value, 16);
                             }
                             catch (FormatException)
                             {
@@ -426,16 +498,42 @@ namespace AutoAssembler
                             }
                         }
                     }
+                    switch (numbers[x].Type)
+                    {
+                        case MemoryAPI.OperationType.Add:
+                            Address += temp;
+                            break;
+                        case MemoryAPI.OperationType.Sub:
+                            Address -= temp;
+                            break;
+                        case MemoryAPI.OperationType.Mul:
+                            Address *= temp;
+                            break;
+                    }
                     ++x;
                 }
                 if (SplitExps.Length == 1)
                 {
                     return Address;
                 }
-                if(!ReadMemoryInt64(Address,ref Address))
+                if (Var.is64bit)
                 {
-                    Var.ErrorState = "ReadMemoryError";
-                    return 0;
+                    if (!ReadMemoryInt64(Address, ref Address))
+                    {
+                        Var.ErrorState = "ReadMemoryError";
+                        return 0;
+                    }
+                    continue;
+                }
+                else
+                {
+                    int tAddress = (int)Address;
+                    if (!ReadMemoryInt32(Address, ref tAddress))
+                    {
+                        Var.ErrorState = "ReadMemoryError";
+                        return 0;
+                    }
+                    Address = tAddress;
                 }
             }
             return Address;
