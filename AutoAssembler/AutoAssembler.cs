@@ -76,8 +76,9 @@ namespace AutoAssembler
             long CurrentAddress = 0;
             bool mustbefar;
             TotalLine = Codes.Length;
+            string InstrPrefix; //命令前缀,减少ToUpper函数的使用来提升效率
             //将全局符号分配给脚本内部标签
-            for(i = 0;i < Var.RegisteredSymbols.Count; ++i)
+            for (i = 0;i < Var.RegisteredSymbols.Count; ++i)
             {
                 label.LabelName = Var.RegisteredSymbols[i].SymbolName;
                 label.Address = Var.RegisteredSymbols[i].Address;
@@ -88,11 +89,8 @@ namespace AutoAssembler
             for(i = 0;i < TotalLine; ++i)
             {
                 Currentline = Codes[i].Trim();
-                if (Substring(Currentline,0,2) == "//")
-                {
-                    continue;
-                }
-                if (Substring(Currentline,0,14).ToUpper() == "AOBSCANMODULE(")
+                InstrPrefix = Currentline.ToUpper();
+                if (Substring(InstrPrefix,0,14) == "AOBSCANMODULE(")
                 {
                     regex = new Regex(@",");
                     seek = 14;
@@ -142,7 +140,8 @@ namespace AutoAssembler
                 }
                 regex = new Regex(@",");
                 string[] args;
-                if (Substring(Currentline, 0, 6).ToUpper() == "ALLOC(")
+                InstrPrefix = Currentline.ToUpper();
+                if (Substring(InstrPrefix, 0, 6) == "ALLOC(")
                 {
                     Currentline = Currentline.Replace("\"", "");
                     seek = Currentline.IndexOf("(") + 1;
@@ -216,7 +215,7 @@ namespace AutoAssembler
                     allocs.Add(alloc);
                     continue;
                 }
-                if (Substring(Currentline, 0, 8).ToUpper() == "DEALLOC(")
+                if (Substring(InstrPrefix, 0, 8) == "DEALLOC(")
                 {
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
@@ -224,7 +223,7 @@ namespace AutoAssembler
                     Deallocs.Add(s);//将其加入到Deallocs数组,在最后处理
                     continue;
                 }
-                if (Substring(Currentline, 0, 6).ToUpper() == "LABEL(")
+                if (Substring(InstrPrefix, 0, 6) == "LABEL(")
                 {
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
@@ -244,7 +243,7 @@ namespace AutoAssembler
                     labels.Add(label);
                     continue;
                 }
-                if(Substring(Currentline,0,13).ToUpper() == "CREATETHREAD(")
+                if(Substring(InstrPrefix, 0,13) == "CREATETHREAD(")
                 {
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
@@ -252,7 +251,7 @@ namespace AutoAssembler
                     Threads.Add(s);
                     continue;
                 }
-                if (Substring(Currentline, 0, 15).ToUpper() == "REGISTERSYMBOL(")
+                if (Substring(InstrPrefix, 0, 15) == "REGISTERSYMBOL(")
                 {
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
@@ -260,7 +259,7 @@ namespace AutoAssembler
                     registers.Add(s);
                     continue;
                 }
-                if(Substring(Currentline, 0, 17).ToUpper() == "UNREGISTERSYMBOL(")
+                if(Substring(InstrPrefix, 0, 17) == "UNREGISTERSYMBOL(")
                 {
                     s = Currentline.Substring(17, Currentline.Length - 18).Trim();
                     for(j = 0;j < Var.RegisteredSymbols.Count; ++j)
@@ -283,9 +282,10 @@ namespace AutoAssembler
             for(i = 0;i < TotalLine; i++)
             {
                 Currentline = ReplaceWithDefines(Codes[i], defines);
+                InstrPrefix = Currentline.ToUpper();
                 if (Currentline[Currentline.Length - 1] != ':')//处理汇编指令
                 {
-                    if (Substring(Currentline, 0, 3).ToUpper() == "DB ")
+                    if (Substring(InstrPrefix, 0, 3) == "DB ")
                     {
                         s = Currentline.Substring(3, Currentline.Length - 3);
                         assembled.AssembledBytes = memoryAPI.HexToBytes(s);
@@ -294,7 +294,7 @@ namespace AutoAssembler
                         CurrentAddress += assembled.AssembledBytes.Length;
                         continue;
                     }
-                    if (Substring(Currentline, 0, 4).ToUpper() == "NOP ")
+                    if (Substring(InstrPrefix, 0, 4) == "NOP ")
                     {
                         s = Currentline.Substring(4, Currentline.Length - 4);
                         try
