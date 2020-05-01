@@ -115,7 +115,7 @@ namespace AutoAssembler
         [DllImport("kernel32.dll", EntryPoint = "VirtualFreeEx")]
         private static extern bool VirtualFreeEx(IntPtr Handle, long Address, int size, int FreeType);
         [DllImport("kernel32.dll", EntryPoint = "VirtualQueryEx")]
-        private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, out MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
+        private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, ref MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
         [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
         private static extern long VirtualAllocEx(IntPtr process, long pAddress, int size, int AllocType, int protect);
         public Assembler_Parameter Assemble(string Asm,long CurrentAddress,bool x64)
@@ -148,6 +148,7 @@ namespace AutoAssembler
             pos[1] = Exp.IndexOf('-');
             pos[2] = Exp.IndexOf('*');
             flag = pos[0] != -1 || pos[1] != -1 || pos[2] != -1;
+            Exp = Exp.Trim();
             if (!flag)
             {
                 number.Value = Exp.Trim();
@@ -161,8 +162,8 @@ namespace AutoAssembler
             number.Value = Exp.Substring(0, pos[min]).Trim();
             number.Type = OperationType.Add;
             numbers.Add(number);
-            current = pos[min] + 1;
         label:
+            current = pos[min] + 1;
             do
             {
                 pos[0] = Exp.IndexOf('+', current);
@@ -256,7 +257,6 @@ namespace AutoAssembler
         public long GetModuleBaseaddress(string DLLname)
         {
             DLLname = DLLname.ToUpper();
-            DLLname = DLLname.Replace("\"", "");
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper() == DLLname)
@@ -267,7 +267,6 @@ namespace AutoAssembler
         public long GetModuleSize(string DLLname)
         {
             DLLname = DLLname.ToUpper();
-            DLLname = DLLname.Replace("\"", "");
             foreach (ProcessModule m in Var.ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper().Equals(DLLname))
@@ -304,7 +303,7 @@ namespace AutoAssembler
             long offset;
             while (true)
             {
-                v = VirtualQueryEx(Var.ProcessHandle, b, out mbi, Marshal.SizeOf(mbi));
+                v = VirtualQueryEx(Var.ProcessHandle, b, ref mbi, Marshal.SizeOf(mbi));
                 if (v != Marshal.SizeOf(mbi))
                     return 0;
                 if (mbi.BaseAddress > maxAddress)
@@ -379,7 +378,7 @@ namespace AutoAssembler
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             while(CurrentAddress < EndAddress)
             {
-                if (VirtualQueryEx(Var.ProcessHandle, CurrentAddress, out mbi, Marshal.SizeOf(mbi)) == 0)
+                if (VirtualQueryEx(Var.ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
                     return 0;
                 Buffer = new byte[mbi.RegionSize];
                 if (!ReadMemoryByteSet(Var.ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
