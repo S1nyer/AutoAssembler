@@ -1,4 +1,5 @@
 ﻿using System;
+using AutoAssembler;
 using System.Text;
 
 namespace Example
@@ -7,13 +8,16 @@ namespace Example
     {
         static void Main(string[] args)
         {
-            AutoAssembler.AutoAssembler Assembler = new AutoAssembler.AutoAssembler();
-            AutoAssembler.MemoryAPI MemoryAPI = new AutoAssembler.MemoryAPI();
-            //OpenProcess的作用是获取程序句柄和程序的模块信息
-            //The role of OpenProcess function is get the process's handle and get process module info
-            if (!Assembler.OpenProcess("explorer", true))
+            //初始化MemoryAPI类和AutoAssembler类
+            //Initialization MemoryAPI & AutoAssembler
+            MemoryAPI MemoryAPI = new MemoryAPI("Explorer");
+            //AutoAssembler类有另一种构造方法是AutoAssembler(ProcessName)
+            //AutoAssembler class have another construction function: AutoAssembler(ProcessName)
+            //For example,  AutoAssembler Assembler = new AutoAssembler(Explorer);
+            AutoAssembler.AutoAssembler Assembler = new AutoAssembler.AutoAssembler(MemoryAPI);
+            if (!MemoryAPI.ok)
             {
-                Console.WriteLine(AutoAssembler.Var.AutoAssemble_Error);
+                Console.WriteLine("OpenProcess Failed!");
                 Console.ReadKey();
                 return;
             }
@@ -26,17 +30,17 @@ namespace Example
             //now enable this script
             if (!Assembler.AutoAssemble(AAScript, true)) 
             {
-                Console.WriteLine(AutoAssembler.Var.AutoAssemble_Error);
+                Console.WriteLine(Assembler.AutoAssemble_Error);
                 Console.ReadKey();
                 return;
             };
             //获取符号ThreadMemroy和INJECT的地址。注意：符号名大小写敏感！
             //Get registered symbol ThreadMemory and INJECT address.Warning:Case sensitive!
-            long ThreadMemory = MemoryAPI.GetAddress("ThreadMemory+100");
+            long ThreadMemory = Assembler.GetAddress("ThreadMemory+100");
             int temp = 0;
             MemoryAPI.ReadMemoryInt32(ThreadMemory, ref temp);
             Console.WriteLine("Address:{0},Value:{1}", ThreadMemory,temp.ToString("x"));
-            long inject = MemoryAPI.GetAddress("INJECT");
+            long inject = Assembler.GetAddress("INJECT");
             Console.WriteLine("INJECT's Address:{0}\nInput word you want write to ThreadMemory's address:", inject.ToString("x"));
             string s = Console.ReadLine();
             MemoryAPI.WriteMemoryString(ThreadMemory, s,Encoding.Unicode);
@@ -48,7 +52,7 @@ namespace Example
             Console.ReadKey(true);
             if (!Assembler.AutoAssemble(AAScript, false))
             {
-                Console.WriteLine(AutoAssembler.Var.AutoAssemble_Error);
+                Console.WriteLine(Assembler.AutoAssemble_Error);
                 Console.ReadKey();
                 return;
             };

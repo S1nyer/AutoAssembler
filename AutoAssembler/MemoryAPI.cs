@@ -9,6 +9,31 @@ namespace AutoAssembler
 {
     public class MemoryAPI
     {
+        public IntPtr ProcessHandle;
+        public bool is64bit;
+        public bool ok;
+        public ProcessModuleCollection ProcessModuleInfo;
+        public MemoryAPI(string ProcessName)
+        {
+            ok = true;
+            ProcessHandle = getHandleByProcessName(ProcessName);
+            try
+            {
+                Process process = Process.GetProcessesByName(ProcessName)[0];
+                ProcessModuleInfo = process.Modules;
+                IsWow64Process(process.SafeHandle, out is64bit);
+                is64bit = !is64bit;
+            }
+            catch (IndexOutOfRangeException)
+            {
+                ok = false;
+                return;
+            }
+            if(ProcessHandle == null || ProcessModuleInfo == null)
+            {
+                ok = false;
+            }
+        }
         public enum Assembler_Status
         {
             //XED汇编引擎状态
@@ -30,35 +55,7 @@ namespace AutoAssembler
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
             public string error;//错误字符
         };
-        public struct Label
-        {
-            public string LabelName;
-            public long Address;
-            public bool Define;
-        }
-        public struct Define
-        {
-            public string DefineName;
-            public string Value;
-        }
-        public struct Reassemble
-        {
-            public long CurrentAddress;
-            public int Reflect;//汇编代码数组索引
-            public int Reflect2;//汇编字节集数组索引
-        }
-        public struct AllocedMemory
-        {
-            public string AllocName;
-            public long Address;
-            public int size;
-            public bool Zero;
-        }
-        public struct RegisterSymbol
-        {
-            public string SymbolName;
-            public long Address;
-        }
+        
         public struct MEMORY_BASIC_INFORMATION
         {
             public long BaseAddress;
@@ -100,6 +97,10 @@ namespace AutoAssembler
         const int MEM_WRITE_WATCH = 0x200000;
         const int MEM_PHYSICAL = 0x400000;
         const int MEM_LARGE_PAGES = 0x20000000;
+        [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.Winapi)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWow64Process([In] Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid processHandle,
+                                                 [Out, MarshalAs(UnmanagedType.Bool)] out bool wow64Process);
         [DllImport("XEDParse.dll", EntryPoint = "XEDParseAssemble")]
         private static extern Assembler_Status Assemble(ref Assembler_Parameter Parameter);
         [DllImport("kernel32.dll", EntryPoint = "CloseHandle")]
@@ -113,7 +114,7 @@ namespace AutoAssembler
         [DllImport("kernel32.dll", EntryPoint = "OpenProcess")]
         private static extern IntPtr OpenProcess(int dwDesiredAccess, int bInheritHandle, int dwProcessId);
         [DllImport("kernel32.dll", EntryPoint = "VirtualFreeEx")]
-        private static extern bool VirtualFreeEx(IntPtr Handle, long Address, int size, int FreeType);
+        public static extern bool VirtualFreeEx(IntPtr Handle, long Address, int size, int FreeType);
         [DllImport("kernel32.dll", EntryPoint = "VirtualQueryEx")]
         private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, ref MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
         [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
@@ -210,54 +211,32 @@ namespace AutoAssembler
         public IntPtr CreateThread(long address)
         {
             int dw = 0;
-            return CreateRemoteThread(Var.ProcessHandle, 0, 0, address, 0, 0, dw);
+            return CreateRemoteThread(ProcessHandle, 0, 0, address, 0, 0, dw);
         }
         public IntPtr getHandleByProcessName(string processName)
         {
-            int pid;
             Process[] ArrayProcess = Process.GetProcessesByName(processName);
             foreach (Process pro in ArrayProcess)
             {
-                pid = pro.Id;
-                return OpenProcess(PROCESS_POWER_MAX, 0, pid);
+                return OpenProcess(PROCESS_POWER_MAX,0,pro.Id);
             }
             return (IntPtr)0;
         }
         public long AllocMemory(long address,int size)
         {
-            long value = VirtualAllocEx(Var.ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            long value = VirtualAllocEx(ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
             if (value != 0)
             {
                 return value;
             }
             return value;
         }
-        public bool FreeAllocMemory(string AllocName)
-        {
-            for(int i = 0;i < Var.AllocedMemorys.Count; ++i)
-            {
-                if(AllocName == Var.AllocedMemorys[i].AllocName)
-                {
-                    bool ok = VirtualFreeEx(Var.ProcessHandle, Var.AllocedMemorys[i].Address, Var.AllocedMemorys[i].size, MEM_DECOMMIT);
-                    Var.AllocedMemorys.RemoveAt(i);
-                    return ok;
-                }
-            }
-            return false;
-        }
-        public bool GetProcessModuleInfo(string processName)
-        {
-            foreach(Process p in Process.GetProcessesByName(processName))
-            {
-                Var.ProcessModuleInfo = p.Modules;
-                return true;
-            }
-            return false;
-        }
         public long GetModuleBaseaddress(string DLLname)
         {
             DLLname = DLLname.ToUpper();
-            foreach (ProcessModule m in Var.ProcessModuleInfo)
+            Number[] numbers = OperationParse(DLLname);
+            DLLname = numbers[0].Value.ToUpper();
+            foreach (ProcessModule m in ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper() == DLLname)
                     return (long)m.BaseAddress;
@@ -266,11 +245,12 @@ namespace AutoAssembler
         }
         public long GetModuleSize(string DLLname)
         {
-            DLLname = DLLname.ToUpper();
-            foreach (ProcessModule m in Var.ProcessModuleInfo)
+            Number[] numbers = OperationParse(DLLname);
+            DLLname = numbers[0].Value.ToUpper();
+            foreach (ProcessModule m in ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper().Equals(DLLname))
-                    return (long)m.ModuleMemorySize;
+                    return m.ModuleMemorySize;
             }
             return 0;
         }
@@ -279,11 +259,11 @@ namespace AutoAssembler
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             if (Address == 0)
             {
-                return VirtualAllocEx(Var.ProcessHandle, 0, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                return VirtualAllocEx(ProcessHandle, 0, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
             }
             long minAddress = Address - 0x70000000;
             long maxAddress = Address + 0x70000000;
-            if (Var.is64bit == true)
+            if (is64bit == true)
             {
                 if (minAddress > x64MaxAddress || minAddress < x64MinAddress)
                     minAddress = x64MinAddress;
@@ -303,7 +283,7 @@ namespace AutoAssembler
             long offset;
             while (true)
             {
-                v = VirtualQueryEx(Var.ProcessHandle, b, ref mbi, Marshal.SizeOf(mbi));
+                v = VirtualQueryEx(ProcessHandle, b, ref mbi, Marshal.SizeOf(mbi));
                 if (v != Marshal.SizeOf(mbi))
                     return 0;
                 if (mbi.BaseAddress > maxAddress)
@@ -353,6 +333,42 @@ namespace AutoAssembler
             }
             return result;
         }
+        private long ModuleParse(string Module)
+        {
+            long temp = 0;
+            long Address = 0;
+            Number[] numbers = OperationParse(Module);
+            for (int i = 0; i < numbers.Length; ++i)
+            {
+                temp = GetModuleBaseaddress(numbers[i].Value);
+                if (temp == 0)
+                {
+                    //未找到模块,判断是否为静态地址
+                    try
+                    {
+                        temp = Convert.ToInt64(numbers[i].Value, 16);
+                    }
+                    catch (FormatException)
+                    {
+                        //非模块及静态地址
+                        return 0;
+                    }
+                }
+                switch (numbers[i].Type)
+                {
+                    case MemoryAPI.OperationType.Add:
+                        Address += temp;
+                        break;
+                    case MemoryAPI.OperationType.Sub:
+                        Address -= temp;
+                        break;
+                    case MemoryAPI.OperationType.Mul:
+                        Address *= temp;
+                        break;
+                }
+            }
+            return Address;
+        }
         public long AobScanModule(string Module,string MarkCode)
         {
             if (String.IsNullOrEmpty(MarkCode))
@@ -370,7 +386,7 @@ namespace AutoAssembler
             //定义模块信息及有关变量
             long BeginAddress, EndAddress,CurrentAddress;
             byte[] Buffer;
-            BeginAddress = GetAddress(Module);
+            BeginAddress = ModuleParse(Module);
             if (BeginAddress == 0)
                 return 0;
             EndAddress = GetModuleBaseaddress(Module) + GetModuleSize(Module);
@@ -378,10 +394,10 @@ namespace AutoAssembler
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             while(CurrentAddress < EndAddress)
             {
-                if (VirtualQueryEx(Var.ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
+                if (VirtualQueryEx(ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
                     return 0;
                 Buffer = new byte[mbi.RegionSize];
-                if (!ReadMemoryByteSet(Var.ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
+                if (!ReadMemoryByteSet(ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
                     return 0;
                 BufferLen = Buffer.Length;
                 while(i < BufferLen && j < CodeLen)
@@ -456,98 +472,17 @@ namespace AutoAssembler
             }
             return CopyBytes;
         }
-        public long GetAddress(string Expression)
-        {
-            Expression = Expression.Replace("[", "");
-            char[] a = { ']' };
-            string[] SplitExps = Expression.Split(a, StringSplitOptions.RemoveEmptyEntries);
-            long Address = 0;
-            long temp = 0;
-            for (int i = 0; i < SplitExps.Length; i++)
-            {
-                Number[] numbers = OperationParse(SplitExps[i]);
-                int x = 0;
-                while (x < numbers.Length)
-                {
-                    temp = 0;
-                    //寻找全局符号数组
-                    foreach (RegisterSymbol symbol in Var.RegisteredSymbols)
-                    {
-                        if (symbol.SymbolName == numbers[x].Value)
-                        {
-                            temp = symbol.Address;
-                            break;
-                        }
-                    }
-                    if (temp == 0)
-                    {
-                        //未找到到指定符号,判断其是否为模块
-                        temp = GetModuleBaseaddress(numbers[x].Value);
-                        if (temp == 0)
-                        {
-                            //未找到模块,判断是否为静态地址
-                            try
-                            {
-                                temp = Convert.ToInt64(numbers[x].Value, 16);
-                            }
-                            catch (FormatException)
-                            {
-                                //非全局符号,模块及静态地址
-                                return 0;
-                            }
-                        }
-                    }
-                    switch (numbers[x].Type)
-                    {
-                        case MemoryAPI.OperationType.Add:
-                            Address += temp;
-                            break;
-                        case MemoryAPI.OperationType.Sub:
-                            Address -= temp;
-                            break;
-                        case MemoryAPI.OperationType.Mul:
-                            Address *= temp;
-                            break;
-                    }
-                    ++x;
-                }
-                if (SplitExps.Length == 1)
-                {
-                    return Address;
-                }
-                if (Var.is64bit)
-                {
-                    if (!ReadMemoryInt64(Address, ref Address))
-                    {
-                        Var.ErrorState = "ReadMemoryError";
-                        return 0;
-                    }
-                    continue;
-                }
-                else
-                {
-                    int tAddress = (int)Address;
-                    if (!ReadMemoryInt32(Address, ref tAddress))
-                    {
-                        Var.ErrorState = "ReadMemoryError";
-                        return 0;
-                    }
-                    Address = tAddress;
-                }
-            }
-            return Address;
-        }
         public byte[] ReadMemoryByteSet(long address,int size)
         {
             byte[] Buffer = new byte[size];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, Buffer, size, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, Buffer, size, 0))
                 return Buffer;
             return null;
         }
         public bool ReadMemoryByte(long address,ref byte buffer)
         {
             byte[] Bytes = new byte[1];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, Bytes, 1, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, Bytes, 1, 0))
             {
                 buffer = Bytes[0];
                 return true;
@@ -557,7 +492,7 @@ namespace AutoAssembler
         public bool ReadMemoryInt16(long address, ref short buffer)
         {
             byte[] bytes = new byte[4];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 2, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, bytes, 2, 0))
             {
                 buffer = BitConverter.ToInt16(bytes, 0);
                 return true;
@@ -567,7 +502,7 @@ namespace AutoAssembler
         public bool ReadMemoryInt32(long address,ref int buffer)
         {
             byte[] bytes = new byte[4];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, bytes, 4, 0))
             {
                 buffer = BitConverter.ToInt32(bytes, 0);
                 return true;
@@ -577,7 +512,7 @@ namespace AutoAssembler
         public bool ReadMemoryInt64(long address,ref long buffer)
         {
             byte[] bytes = new byte[8];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, bytes, 8, 0))
             {
                 buffer = BitConverter.ToInt64(bytes, 0);
                 return true;
@@ -587,7 +522,7 @@ namespace AutoAssembler
         public bool ReadMemoryFloat(long address,ref float buffer)
         {
             byte[] bytes = new byte[4];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, bytes, 4, 0))
             {
                 buffer = BitConverter.ToSingle(bytes, 0);
                 return true;
@@ -597,7 +532,7 @@ namespace AutoAssembler
         public bool ReadMemoryDouble(long address,ref double buffer)
         {
             byte[] bytes = new byte[8];
-            if (ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0))
+            if (ReadMemoryByteSet(ProcessHandle, address, bytes, 8, 0))
             {
                 buffer = BitConverter.ToDouble(bytes, 0);
                 return true;
@@ -614,7 +549,7 @@ namespace AutoAssembler
             if(Byteslength == 0)
             {
                 bytes = new byte[1024];
-                if (!ReadMemoryByteSet(Var.ProcessHandle, address, bytes, 1024, 0))
+                if (!ReadMemoryByteSet(ProcessHandle, address, bytes, 1024, 0))
                 {
                     return "";
                 }
@@ -629,7 +564,7 @@ namespace AutoAssembler
                 }
             }
             bytes = new byte[Byteslength];
-            if (!ReadMemoryByteSet(Var.ProcessHandle, address, bytes, Byteslength, 0))
+            if (!ReadMemoryByteSet(ProcessHandle, address, bytes, Byteslength, 0))
             {
                 return "";
             }
@@ -637,38 +572,38 @@ namespace AutoAssembler
         }
         public bool WriteMemoryByteSet(long address,byte[] Bytes)
         {
-            return WriteMemoryByteSet(Var.ProcessHandle, address, Bytes, Bytes.Length, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, Bytes, Bytes.Length, 0);
         }
         public bool WriteMemoryByte(long address,byte Byte)
         {
             byte[] b = { Byte };
-            return WriteMemoryByteSet(Var.ProcessHandle, address,b, 1, 0);
+            return WriteMemoryByteSet(ProcessHandle, address,b, 1, 0);
         }
         public bool WriteMemoryInt16(long address,short value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 2, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, bytes, 2, 0);
         }
         public bool WriteMemoryInt32(long address,int value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, bytes, 4, 0);
 
         }
         public bool WriteMemoryInt64(long address,long value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, bytes, 8, 0);
         }
         public bool WriteMemoryFloat(long address,float value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 4, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, bytes, 4, 0);
         }
         public bool WriteMemoryDouble(long address,double value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
-            return WriteMemoryByteSet(Var.ProcessHandle, address, bytes, 8, 0);
+            return WriteMemoryByteSet(ProcessHandle, address, bytes, 8, 0);
         }
         /// <summary> 
         ///  向给出的地址写入文本，会自动添加字串结尾
@@ -680,23 +615,11 @@ namespace AutoAssembler
             int size = Copy.Length + 2;
             byte[] Bytes = new byte[size];
             Copy.CopyTo(Bytes, 0);
-            if (!WriteMemoryByteSet(Var.ProcessHandle, address, Bytes, Bytes.Length, 0))
+            if (!WriteMemoryByteSet(ProcessHandle, address, Bytes, Bytes.Length, 0))
             {
                 return false;
             }
             return true;
         }
-    }
-    public static class Var
-    {
-        public static bool is64bit;
-        public static IntPtr ProcessHandle;
-        public static ProcessModuleCollection ProcessModuleInfo;
-        public static List<MemoryAPI.RegisterSymbol> RegisteredSymbols;
-        public static List<MemoryAPI.AllocedMemory> AllocedMemorys;
-        public static string AutoAssemble_Error;
-        public static string ErrorState;
-        public const byte True = 1;
-        public const byte False = 0;
     }
 }
