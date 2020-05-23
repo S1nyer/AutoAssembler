@@ -24,12 +24,35 @@ namespace AutoAssembler
             ErrorState = "OpenProcessFailed";
             AutoAssemble_Error = "Open process " + ProcessName + " failed!";
         }
+        private List<Label> TempLabels;
         public List<RegisterSymbol> RegisteredSymbols;
         public List<AllocedMemory> AllocedMemorys;
         public string AutoAssemble_Error;
         public string ErrorState;
         public bool OK;
         private readonly MemoryAPI Memory;
+        public enum Assembler_Status
+        {
+            //XED汇编引擎状态
+            Assembler_Error = 0, Assembler_OK = 1
+        };
+        [DllImport("XEDParse.dll", EntryPoint = "XEDParseAssemble")]
+        private static extern Assembler_Status Assemble(ref Assembler_Data Parameter);
+        public delegate bool CBXEDPARSE_UNKNOWN(string Text, ref Int64 value);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Assembler_Data
+        {
+            public bool x64; //逻辑值，0为假1为真
+            public Int64 CurrentAddress;//汇编指令当前地址(用于运算jmp和call等)
+            public Int16 AsmLength;//指令字节集长度
+            public CBXEDPARSE_UNKNOWN cbUnkonwn;//无法识别的指令
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public byte[] Bytes;//汇编指令字节集
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string Asm;//汇编指令
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+            public string error;//错误字符
+        };
         public struct Assembled
         {
             public byte[] AssembledBytes;
@@ -45,18 +68,14 @@ namespace AutoAssembler
         {
             public string LabelName;
             public long Address;
-            public bool Define;
-        }
-        public struct Define
-        {
-            public string DefineName;
-            public string Value;
+            public long GuessValue;
+            public bool VirtualLabel;
         }
         public struct Reassemble
         {
             public long CurrentAddress;
-            public int Reflect;//汇编代码数组索引
-            public int Reflect2;//汇编字节集数组索引
+            public string ReassembleCode;//汇编代码
+            public int Reflect;//汇编字节集数组索引
         }
         public struct AllocedMemory
         {
@@ -120,27 +139,26 @@ namespace AutoAssembler
             List<string> AssembleCode = new List<string>();
             List<string> Threads = new List<string>();
             List<string> Deallocs = new List<string>();
+            Assembler_Status status;
             AutoAssemble_Error = "";
+            ErrorState = "";
             Reassemble reassemble;
             List<Reassemble> reassembles = new List<Reassemble>();
-            MemoryAPI.Assembler_Parameter Parameters = new MemoryAPI.Assembler_Parameter();
+            Assembler_Data AsmData = new Assembler_Data();
             List<RegisterSymbol> Symbols = new List<RegisterSymbol>();
             AllocedMemory alloc = new AllocedMemory();
             List<AllocedMemory> allocs = new List<AllocedMemory>();
-            Define define;
-            List<Define> defines = new List<Define>();
-            Label label;
+            Label label = new Label();
             List<Label> labels = new List<Label>();
             Assembled assembled = new Assembled();
             Address address = new Address();
             List<Assembled> assembleds = new List<Assembled>();
             List<string> registers = new List<string>();
-            string Currentline,Currentline2="", s = "";
+            string Currentline, s = "";
             int TotalLine,i, j, x;
             Regex regex;
             int seek, size;//用于截取字符
             long CurrentAddress = 0;
-            bool mustbefar;
             TotalLine = Codes.Length;
             string InstrPrefix; //命令前缀,减少ToUpper函数的使用来提升效率
             //将全局符号分配给脚本内部标签
@@ -148,7 +166,7 @@ namespace AutoAssembler
             {
                 label.LabelName = RegisteredSymbols[i].SymbolName;
                 label.Address = RegisteredSymbols[i].Address;
-                label.Define = true;
+                label.VirtualLabel = false;
                 labels.Add(label);
             }
             //首先处理AOBScanModule命令
@@ -169,21 +187,21 @@ namespace AutoAssembler
                         ErrorState = "LackParameters";
                         return false;
                     }
-                    define.DefineName = args[0];
-                    if (DefineExist(define.DefineName, defines))
+                    label.LabelName = args[0];
+                    if (LabelExist(label.LabelName,ref labels))
                     {
-                        ErrorState = "DefineAlreadyExist";
+                        ErrorState = "LabelAlreadyExist";
                         AutoAssemble_Error = ("Symbol: " + args[0] + " already exist!");
                         return false;
                     }
-                    define.Value = Memory.AobScanModule(args[1], args[2]).ToString("x");
-                    if (define.Value == "0")
+                    label.Address = Memory.AobScanModule(args[1], args[2]);
+                    if (label.Address == 0)
                     {//未找到特征码
                         ErrorState = "AOBScanFailed";
                         AutoAssemble_Error = "Cannot find AOB's address!Line number:" + i.ToString() + ",Code:" + Codes[i];
                         return false;
                     }
-                    defines.Add(define);
+                    labels.Add(label);
                     //清除AOBScan命令，为第二次循环
                     Codes[i] = "";
                 }
@@ -218,7 +236,7 @@ namespace AutoAssembler
                     { 
                         AutoAssemble_Error = "Alloc parameters overload!Line number:" + i.ToString() + ",Code:" + Codes[i];
                         ErrorState = "ParametersOverload";
-                        return false;
+                        goto failed;
                     }
                     if(args.Length == 3)
                     {
@@ -226,7 +244,7 @@ namespace AutoAssembler
                         {
                             ErrorState = "AllocAlreadyExist";
                             AutoAssemble_Error = "Symbol: " + args[0] + " already alloc!";
-                            return false;
+                            goto failed;
                         }
                         alloc.AllocName = args[0];
                         try
@@ -237,14 +255,14 @@ namespace AutoAssembler
                         {
                             AutoAssemble_Error = ("Is not a valid integer!Line number:" + i.ToString() + ",Code:" + Codes[i]);
                             ErrorState = "NotValidInteger";
-                            return false;
+                            goto failed;
                         }
                         long NearAddress = GetAddress(args[2]);
                         if(NearAddress == 0)
                         {
                             AutoAssemble_Error = ("Parameter 3 gives an unknown module!Line number:" + i.ToString() + ",Code:" + Codes[i]);
                             ErrorState = "UnknownModule";
-                            return false;
+                            goto failed;
                         }
                         alloc.Zero = false;
                         alloc.Address = Memory.FindNearFreeBlock(NearAddress,alloc.size);
@@ -255,7 +273,7 @@ namespace AutoAssembler
                         {
                             AutoAssemble_Error = ("Symbol: " + args[0] + " already alloc!");
                             ErrorState = "AllocAlreadyExist";
-                            return false ;
+                            goto failed ;
                         }
                         alloc.AllocName = args[0];
                         alloc.Address = Memory.AllocMemory(0, StrToInt(args[1]));
@@ -265,16 +283,16 @@ namespace AutoAssembler
                     if(args.Length < 2)
                     {
                         AutoAssemble_Error = ("Alloc parameters Error!Line number:" + i.ToString() + ",Code:" + Codes[i]);
-                        return false;
+                        goto failed;
                     }
                     if(alloc.Address == 0)
                     {
                         AutoAssemble_Error = "Alloc memory " + allocs[i].AllocName + "failed!";
                         ErrorState = "MemoryAllocFailed";
-                        return false;
+                        goto failed;
                     }
                     end:
-                    label.Define = true;
+                    label.VirtualLabel = false;
                     label.LabelName = alloc.AllocName;
                     label.Address = alloc.Address;
                     labels.Add(label);
@@ -294,17 +312,17 @@ namespace AutoAssembler
                     seek = Currentline.IndexOf("(") + 1;
                     size = Currentline.Length - seek - 1;
                     s = Currentline.Substring(seek, size).Trim();
-                    if (!LabelExist(s, labels))
+                    if (!LabelExist(s,ref labels))
                     {
                         label.LabelName = s;
-                        label.Define = false;
+                        label.VirtualLabel = true;
                         label.Address = 0;
                     }
                     else
                     {
                         ErrorState = "LabelAlreadyExist";
                         AutoAssemble_Error = ("Label: "+s +" already exist!" + "Line number: " + i.ToString() + ", Code: " + Codes[i]);
-                        return false;
+                        goto failed;
                     }
                     labels.Add(label);
                     continue;
@@ -341,13 +359,20 @@ namespace AutoAssembler
                 //不是自动汇编引擎命令,应为汇编指令,加入到汇编指令数组
                 AssembleCode.Add(Currentline);
             }
-
-            //开始处理汇编指令集
             Codes = AssembleCode.ToArray();
+            //对虚拟标签进行估测,对TempLabels进行赋值
+            if(!GuessVirtualLabel(ref labels,ref Codes))
+            {
+                ErrorState = "InvalidCode";
+                goto failed;
+            }
+            TempLabels = labels;
+            //开始处理汇编指令集
+
             TotalLine = Codes.Length;
             for(i = 0;i < TotalLine; i++)
             {
-                Currentline = ReplaceWithDefines(Codes[i], defines);
+                Currentline = Codes[i];
                 InstrPrefix = Currentline.ToUpper();
                 if (Currentline[Currentline.Length - 1] != ':')//处理汇编指令
                 {
@@ -371,7 +396,7 @@ namespace AutoAssembler
                         {
                             AutoAssemble_Error = ("Is not a valid integer!" + " Code: " + Codes[i]);
                             ErrorState = "InvalidValue";
-                            return false;
+                            goto failed;
                         }
                         assembled.AssembledBytes = new byte[x];
                         assembled.CurrentAddress = CurrentAddress;
@@ -409,76 +434,37 @@ namespace AutoAssembler
                         {
                             ErrorState = "InvalidValue";
                             AutoAssemble_Error = "Is not a valid value!" + " Code: " + Codes[i];
-                            return false;
+                            goto failed;
                         }
                         Codes[i] = Currentline;
                     }
                     x = labels.Count;
-                    Currentline = ReplaceWithDefineLabels(Currentline, labels);
-                    s = Currentline;
-                    for(j = 0; j < x; ++j)//寻找指令有关联的非定义标签
+                    AsmData = new Assembler_Data
                     {
-                        if (Currentline.IndexOf(labels[j].LabelName) != -1)
+                        x64 = Memory.is64bit,
+                        Asm = Currentline,
+                        cbUnkonwn = ParseCallBack,
+                        CurrentAddress = CurrentAddress
+                    };
+                    status = Assemble(ref AsmData);
+                    if (status == Assembler_Status.Assembler_Error)
+                    {
+                        AsmData.cbUnkonwn = ParseCallBackVirtual;
+                        status = Assemble(ref AsmData);
+                        if (status == Assembler_Status.Assembler_Error)
                         {
-                            long LabelParentAddress = CurrentAddress;
-                            mustbefar = false;
-                            long diff = 0;
-                            for (int y = i + 1; y < TotalLine; ++y)
-                            {
-                                Currentline2 = ReplaceWithDefines(Codes[y],defines);
-                                if(Currentline2[Currentline2.Length -1] == ':')//Currentline2是一个被使用的地址标签
-                                {
-                                    s = Currentline2.Substring(0, Currentline2.Length - 1);
-                                    if (Currentline2 == (labels[j].LabelName + ":"))//找到了非定义标签
-                                    {
-                                        if (CurrentAddress > LabelParentAddress)
-                                            diff = CurrentAddress - LabelParentAddress;
-                                        else
-                                            diff = LabelParentAddress - CurrentAddress;
-                                        if (diff > 0x80000000)
-                                            mustbefar = true;
-                                        else
-                                            mustbefar = false;
-                                        //最后的清尾工作,将当前汇编指令索引,地址和汇编指令字节集索引储存到reassembles数组
-                                        reassemble.CurrentAddress = CurrentAddress;
-                                        reassemble.Reflect = i;
-                                        reassemble.Reflect2 = assembleds.Count;
-                                        reassembles.Add(reassemble);
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        if (DefineLabelExist(s, labels))
-                                        {
-                                            LabelParentAddress = GetAddressByLabelName(s, labels);
-                                            continue;
-                                        }
-                                        LabelParentAddress = AddressParse(s,ref labels, LabelParentAddress).address;
-                                    }
-                                }
-                            }
-                            if (diff < 128)
-                            {
-                                s = Currentline.Replace(labels[j].LabelName, (CurrentAddress + 127).ToString("x"));
-                                continue;
-                            }
-                            if (mustbefar)
-                                s = Currentline.Replace(labels[j].LabelName, (CurrentAddress + 0x2000FFFFF).ToString("x"));
-                            else
-                                s = Currentline.Replace(labels[j].LabelName, (CurrentAddress + 0xFFFFF).ToString("x"));
+                            AutoAssemble_Error = ("Unknown Asm instruction: " + Codes[i] + ".Error info:" + AsmData.error);
+                            ErrorState = "UnknownAsmInstruction";
+                            goto failed;
                         }
-                    }
-                    Currentline = s;
-                    Parameters = Memory.Assemble(s, CurrentAddress, Memory.is64bit);
-                    if (Parameters.AsmLength == 0)
-                    {
-                        AutoAssemble_Error = ("Unknown Asm instruction: " + Codes[i] + ".Error info:" + Parameters.error);
-                        ErrorState = "UnknownAsmInstruction";
-                        return false;
+                        reassemble.CurrentAddress = CurrentAddress;
+                        reassemble.ReassembleCode = Currentline;
+                        reassemble.Reflect = assembleds.Count;
+                        reassembles.Add(reassemble);
                     }
                     assembled.CurrentAddress = CurrentAddress;
-                    assembled.AssembledBytes = new byte[Parameters.AsmLength];
-                    ByteCopy(Parameters.Bytes, assembled.AssembledBytes, Parameters.AsmLength);
+                    assembled.AssembledBytes = new byte[AsmData.AsmLength];
+                    ByteCopy(AsmData.Bytes, assembled.AssembledBytes, AsmData.AsmLength);
                     assembleds.Add(assembled);
                     CurrentAddress += assembled.AssembledBytes.Length;
                     continue;
@@ -487,27 +473,27 @@ namespace AutoAssembler
                 if (Currentline[Currentline.Length - 1] == ':')//处理定义标签
                 {
                     s = Currentline.Substring(0, Currentline.IndexOf(":")).Trim();
-                    address = AddressParse(s, ref labels, CurrentAddress);
+                    address = LabelParse(s, ref labels, CurrentAddress);
                     if (address.isVirtualLabel && address.Multiple)
                     {
                         AutoAssemble_Error = ("Virtual label cannot add offset before have valid value: " + address.VirtualLabel + " !" + " Code: " + Codes[i]);
                         ErrorState = "InvalidCode";
-                        return false;
+                        goto failed;
                     }
                     if (address.isVirtualLabel)
                     {
-                        if (!RemoveLabelByName(address.VirtualLabel, labels))
+                        if (!RemoveLabelByName(address.VirtualLabel,ref labels))
                         {
                             AutoAssemble_Error = ("Undefined label: " + address.VirtualLabel + " !" + " Code: " + Codes[i]);
                             ErrorState = "UndefinedLabel";
-                            return false;
+                            goto failed;
                         }
                         //初始化一个新Label结构，用于清空结构原有数据
                         label = new Label
                         {
                             LabelName = address.VirtualLabel,
                             Address = CurrentAddress,
-                            Define = true
+                            VirtualLabel = false
                         };
                         labels.Add(label);
                         continue;
@@ -515,20 +501,34 @@ namespace AutoAssembler
                     CurrentAddress = address.address;
                 }
             }
-            //大部分汇编指令已被处理完毕,现在处理需要被重汇编的指令(reassembles)
+            TempLabels = labels;
+            //大部分汇编指令已被处理完毕,现在处理需要被重新汇编的指令(reassembles)
             Assembled[] assembledArray = assembleds.ToArray();
             x = reassembles.Count;
             for(i = 0; i < x; ++i)
             {
-                Currentline = ReplaceWithDefineLabels(Codes[reassembles[i].Reflect],labels);
-                Parameters = Memory.Assemble(Currentline, reassembles[i].CurrentAddress, Memory.is64bit);
-                if(Parameters.AsmLength == 0)
+                int diff;
+                AsmData = new Assembler_Data
                 {
-                    AutoAssemble_Error = ("Unknown Asm instruction: " + Codes[reassembles[i].Reflect] + ".Error info:" + Parameters.error);
+                    x64 = Memory.is64bit,
+                    Asm = reassembles[i].ReassembleCode,
+                    cbUnkonwn = ParseCallBack,
+                    CurrentAddress = reassembles[i].CurrentAddress
+                };
+                status = Assemble(ref AsmData);
+                if (status == Assembler_Status.Assembler_Error)
+                {
+                    AutoAssemble_Error = ("Unknown Asm instruction: " + reassembles[i].ReassembleCode + ".Error info:" + AsmData.error);
                     ErrorState = "UnknownAsmInstruction";
-                    return false;
+                    goto failed;
                 }
-                ByteCopy(Parameters.Bytes, assembledArray[reassembles[i].Reflect2].AssembledBytes, Parameters.AsmLength);
+                diff = AsmData.AsmLength - assembledArray[reassembles[i].Reflect].AssembledBytes.Length;
+                if (diff != 0)
+                {
+                    AddressAligned(ref assembledArray, diff, reassembles[i].Reflect);
+                    assembledArray[reassembles[i].Reflect].AssembledBytes = new byte[AsmData.AsmLength];
+                }
+                ByteCopy(AsmData.Bytes, assembledArray[reassembles[i].Reflect].AssembledBytes, AsmData.AsmLength);
             }
             //开始分配内存
             for(i = 0;i < allocs.Count; ++i)
@@ -542,7 +542,7 @@ namespace AutoAssembler
                 {
                     AutoAssemble_Error = "Alloc memory " + allocs[i].AllocName + "failed!Near Address:"+allocs[i].Address.ToString("x");
                     ErrorState = "MemoryAllocFailed";
-                    return false;
+                    goto failed;
                 }
                 AllocedMemorys.Add(allocs[i]);
             }
@@ -554,7 +554,7 @@ namespace AutoAssembler
                 {
                     AutoAssemble_Error = ("Write process memory error!");
                     ErrorState = "WriteMemoryError";
-                    return false;
+                    goto failed;
                 } 
             }
             //执行释放内存操作
@@ -565,22 +565,14 @@ namespace AutoAssembler
                 {
                     ErrorState = "FreeMemoryError";
                     AutoAssemble_Error = "Free memory " + s + " error!";
-                    return false;
+                    goto failed;
                 }
-            }
-            //将defines数组的成员加入到label数组
-            for(i = 0; i < defines.Count; ++i)
-            {
-                label.LabelName = defines[i].DefineName;
-                label.Address = Convert.ToInt64(defines[i].Value,16);
-                label.Define = true;
-                labels.Add(label);
             }
             //执行创建线程操作
             bool ok = true;
             for(i = 0; i < Threads.Count; ++i)
             {
-                if(Memory.CreateThread(GetAddressByLabelName(Threads[i],labels)) == null)//线程创建失败不会退出当前函数
+                if(Memory.CreateThread(GetAddressByLabelName(Threads[i],ref labels)) == null)//线程创建失败不会退出当前函数
                 {
                     AutoAssemble_Error = "Create thread failed!";
                     ErrorState = "CreateThreadFailed";
@@ -589,11 +581,21 @@ namespace AutoAssembler
                 }
             }
             //现在将脚本注册的全局符号赋值,汇编脚本处理完毕
-            if (!RegisterSymbols(registers, labels))
+            if (!RegisterSymbols(ref registers,ref labels))
                 ok = false;
             return ok;
+            failed:
+            //释放分配的内存
+            for (i = 0; i < allocs.Count; ++i)
+            {
+                if (allocs[i].Zero)
+                {
+                    FreeAllocMemory(allocs[i].AllocName);
+                }
+            }
+            return false;
         }
-        private bool RemoveLabelByName(string name,List<Label> labels)
+        private bool RemoveLabelByName(string name,ref List<Label> labels)
         {
             int len = labels.Count;
             for(int i = 0; i < len; ++i)
@@ -809,7 +811,19 @@ namespace AutoAssembler
             }
             return null;
         }
-        private bool RegisterSymbols(List<string> registerSymbols,List<Label> labels)
+        private void AddressAligned(ref Assembled[] assembleds,Int32 diff,int start)
+        {
+            long address;
+            while (start < assembleds.Length)
+            {
+                address = assembleds[start].CurrentAddress + assembleds[start].AssembledBytes.Length;
+                if (address != assembleds[start + 1].CurrentAddress)
+                    return;
+                assembleds[start].CurrentAddress += diff;
+                start++;
+            }
+        }
+        private bool RegisterSymbols(ref List<string> registerSymbols,ref List<Label> labels)
         {
             int SymbolCount = registerSymbols.Count;
             int LabelCount = labels.Count;
@@ -861,19 +875,118 @@ namespace AutoAssembler
             }
             return str.Substring(start, length);
         }
-        private Address AddressParse(string expression,ref List<Label> labels, long CurrentAddress)
+        private bool ParseCallBack(string text,ref Int64 retvalue)
         {
-            long reserved = CurrentAddress;
-            Address address = new Address();
-            address.isVirtualLabel = false;
-            MemoryAPI.Number[] numbers = Memory.OperationParse(expression);
-            long temp = 0;
-            if (numbers.Length == 1) goto label;
+            MemoryAPI.Number[] numbers = Memory.OperationParse(text);
+            long temp;
+            long Value = 0;
+            int loop = TempLabels.Count;
             for (int i = 0; i < numbers.Length; ++i)
             {
                 temp = 0;
+                for(int j = 0; j < loop; ++j)
+                {
+                    if (TempLabels[j].VirtualLabel)
+                        continue;
+                    if(TempLabels[j].LabelName == numbers[i].Value)
+                    {
+                        temp = TempLabels[j].Address;
+                        break;
+                    }
+                }
+                if (temp == 0)
+                {
+                    temp = Memory.GetModuleBaseaddress(numbers[i].Value);
+                    if (temp == 0)
+                    {
+                        try
+                        {
+                            temp = Convert.ToInt64(numbers[i].Value, 16);
+                        }
+                        catch (FormatException)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                switch (numbers[i].Type)
+                {
+                    case MemoryAPI.OperationType.Add:
+                        Value += temp;
+                        break;
+                    case MemoryAPI.OperationType.Sub:
+                        Value -= temp;
+                        break;
+                    case MemoryAPI.OperationType.Mul:
+                        Value *= temp;
+                        break;
+                }
+            }
+            retvalue = Value;
+            return true;
+        }
+        private bool ParseCallBackVirtual(string text, ref Int64 retvalue)
+        {
+            MemoryAPI.Number[] numbers = Memory.OperationParse(text);
+            long temp;
+            long Value = 0;
+            int loop = TempLabels.Count;
+            for (int i = 0; i < numbers.Length; ++i)
+            {
+                temp = 0;
+                for (int j = 0; j < loop; ++j)
+                {
+                    if (TempLabels[j].LabelName == numbers[i].Value && TempLabels[j].VirtualLabel)
+                    {
+                        temp = TempLabels[j].GuessValue;
+                        break;
+                    }
+                }
+                if (temp == 0)
+                {
+                    temp = Memory.GetModuleBaseaddress(numbers[i].Value);
+                    if (temp == 0)
+                    {
+                        try
+                        {
+                            temp = Convert.ToInt64(numbers[i].Value, 16);
+                        }
+                        catch (FormatException)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                switch (numbers[i].Type)
+                {
+                    case MemoryAPI.OperationType.Add:
+                        Value += temp;
+                        break;
+                    case MemoryAPI.OperationType.Sub:
+                        Value -= temp;
+                        break;
+                    case MemoryAPI.OperationType.Mul:
+                        Value *= temp;
+                        break;
+                }
+            }
+            retvalue = Value;
+            return true;
+        }
+        private Address LabelParse(string expression,ref List<Label> labels, long CurrentAddress)
+        {
+            long reserved = CurrentAddress;
+            Address address = new Address
+            {
+                isVirtualLabel = false
+            };
+            MemoryAPI.Number[] numbers = Memory.OperationParse(expression);
+            if (numbers.Length == 1) goto label;
+            for (int i = 0; i < numbers.Length; ++i)
+            {
+                long temp = 0;
                 reserved = CurrentAddress;
-                CurrentAddress = GetAddressByLabelName(numbers[i].Value, labels);
+                CurrentAddress = GetAddressByLabelName(numbers[i].Value,ref labels);
                 if (CurrentAddress == 0)
                 {
                     CurrentAddress = Memory.GetModuleBaseaddress(numbers[i].Value);
@@ -915,7 +1028,7 @@ namespace AutoAssembler
             return address;
         //不涉及到多重运算
         label:
-            CurrentAddress = GetAddressByLabelName(numbers[0].Value, labels);
+            CurrentAddress = GetAddressByLabelName(numbers[0].Value,ref labels);
             if (CurrentAddress == 0)
             {
                 CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
@@ -939,6 +1052,48 @@ namespace AutoAssembler
             address.Multiple = false;
             address.address = CurrentAddress;
             return address;
+        }
+        private bool GuessVirtualLabel(ref List<Label> labels,ref string[] codes)
+        {
+            int loop = labels.Count;
+            int loop2 = codes.Length;
+            long temp;
+            Label label = new Label();
+            for(int i = 0; i < loop; ++i)
+            {
+                if (!labels[i].VirtualLabel)
+                    continue;
+                long LabelParentAddress = 0;
+                for (int j = 0; j < loop2; ++j)
+                {
+                    if(codes[j][codes[j].Length-1] != ':')
+                    {
+                        continue;
+                    }
+                    if (labels[i].LabelName + ':' == codes[j])
+                    {
+                        if (LabelParentAddress == 0)
+                        {
+                            AutoAssemble_Error = "Virtual label: " + labels[i].LabelName + " haven't valid parent label!";
+                            return false;
+                        }
+                        label = labels[i];
+                        label.GuessValue = LabelParentAddress;
+                        labels.RemoveAt(i);
+                        labels.Insert(i, label);
+                        break;
+                    }
+                    else
+                    {
+                        temp = GetAddressByLabelName(Substring(codes[j], 0, codes[j].Length - 1), ref labels);
+                        if (temp == 0)
+                            continue;
+                        LabelParentAddress = temp;
+                        continue;
+                    }
+                }
+            }
+            return true;
         }
         struct Address
         {
@@ -1019,16 +1174,6 @@ namespace AutoAssembler
             }
             return assembledBlock.ToArray();
         }
-        private bool DefineExist(string name,List<Define> defines)
-        {
-            int x = defines.Count;
-            for(int i = 0; i < x; ++i)
-            {
-                if (defines[i].DefineName == name)
-                    return true;
-            }
-            return false;
-        }
         private int FindSymbolIndex(string name)
         {
             int count = RegisteredSymbols.Count;
@@ -1040,28 +1185,6 @@ namespace AutoAssembler
                 }
             }
             return -1;
-        }
-        private string ReplaceWithDefines(string code,List<Define> defines)
-        {
-            for(int i = 0; i < defines.Count; ++i)
-            {
-                if(code.IndexOf(defines[i].DefineName) != -1)
-                {
-                    code = code.Replace(defines[i].DefineName, defines[i].Value);
-                }
-            }
-            return code;
-        }
-        private string ReplaceWithDefineLabels(string code, List<Label> labels)
-        {
-            for (int i = 0; i < labels.Count; ++i)
-            {
-                if (code.IndexOf(labels[i].LabelName) != -1 && labels[i].Define)
-                {
-                    code = code.Replace(labels[i].LabelName, labels[i].Address.ToString("x"));
-                }
-            }
-            return code;
         }
         public bool FreeAllocMemory(string AllocName)
         {
@@ -1076,34 +1199,23 @@ namespace AutoAssembler
             }
             return false;
         }
-        private long GetAddressByLabelName(string LabelName,List<Label> Labels)
+        private long GetAddressByLabelName(string LabelName,ref List<Label> Labels)
         {
             int x = Labels.Count;
             for(int i = 0; i < x; ++i)
             {
-                if(LabelName == Labels[i].LabelName && Labels[i].Define)
+                if(LabelName == Labels[i].LabelName && Labels[i].VirtualLabel != true)
                 {
                     return Labels[i].Address;
                 }
             }
             return 0;
         }
-        private bool LabelExist(string Labelname,List<Label> Labels)
+        private bool LabelExist(string Labelname,ref List<Label> Labels)
         {
             for(int i = 0;i < Labels.Count; ++i)
             {
                 if(Labelname == Labels[i].LabelName)
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-        private bool DefineLabelExist(string Labelname, List<Label> Labels)
-        {
-            for (int i = 0; i < Labels.Count; ++i)
-            {
-                if (Labelname == Labels[i].LabelName && Labels[i].Define)
                 {
                     return true;
                 }

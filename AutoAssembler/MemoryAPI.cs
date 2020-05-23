@@ -34,27 +34,6 @@ namespace AutoAssembler
                 ok = false;
             }
         }
-        public enum Assembler_Status
-        {
-            //XED汇编引擎状态
-            Assembler_Error = 0, Assembler_OK = 1
-        };
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate bool CBXEDPARSE_UNKNOWN([MarshalAs(UnmanagedType.LPWStr)]StringBuilder text, long value);
-        [StructLayout(LayoutKind.Sequential)]
-        public struct Assembler_Parameter
-        {
-            public bool x64; //逻辑值，0为假1为真
-            public Int64 CurrentAddress;//汇编指令当前地址(用于运算jmp和call等)
-            public Int16 AsmLength;//指令字节集长度
-            public CBXEDPARSE_UNKNOWN cbUnkonwn;//无法识别的指令
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-            public byte[] Bytes;//汇编指令字节集
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-            public string Asm;//汇编指令
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-            public string error;//错误字符
-        };
         
         public struct MEMORY_BASIC_INFORMATION
         {
@@ -101,8 +80,6 @@ namespace AutoAssembler
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool IsWow64Process([In] Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid processHandle,
                                                  [Out, MarshalAs(UnmanagedType.Bool)] out bool wow64Process);
-        [DllImport("XEDParse.dll", EntryPoint = "XEDParseAssemble")]
-        private static extern Assembler_Status Assemble(ref Assembler_Parameter Parameter);
         [DllImport("kernel32.dll", EntryPoint = "CloseHandle")]
         private static extern bool CloseHandle(IntPtr Handle);
         [DllImport("kernel32.dll", EntryPoint = "WriteProcessMemory")]
@@ -119,15 +96,6 @@ namespace AutoAssembler
         private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, ref MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
         [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
         private static extern long VirtualAllocEx(IntPtr process, long pAddress, int size, int AllocType, int protect);
-        public Assembler_Parameter Assemble(string Asm,long CurrentAddress,bool x64)
-        {
-            Assembler_Parameter parameter = new Assembler_Parameter();
-            parameter.x64 = x64;
-            parameter.Asm = Asm;
-            parameter.CurrentAddress = CurrentAddress;
-            Assemble(ref parameter);
-            return parameter;
-        }
         public enum OperationType
         {
             Add = 0,

@@ -13,7 +13,7 @@ namespace Example
             MemoryAPI MemoryAPI = new MemoryAPI("Explorer");
             //AutoAssembler类有另一种构造方法是AutoAssembler(ProcessName)
             //AutoAssembler class have another construction function: AutoAssembler(ProcessName)
-            //For example,  AutoAssembler Assembler = new AutoAssembler(Explorer);
+            //For example,  AutoAssembler Assembler = new AutoAssembler("Explorer");
             AutoAssembler.AutoAssembler Assembler = new AutoAssembler.AutoAssembler(MemoryAPI);
             if (!MemoryAPI.ok)
             {
