@@ -17,7 +17,7 @@ A C# Class library like CE's AutoAssembler<br>
 * 2.特征码扫描使用双线程,提高了当脚本中有多个AOBScanModule命令时的执行速度
 * 3.现在AOBscanmodule指令中模块已可以用双引号进行大小写区分,例如:`AOBscanmodule(Symbol,"xxxx.dll",12 34 56 78 90)`是区分模块名大小写,`AOBscanmodule(Symbol,xxxx.dll,12 34 56 78 90)`是不区分大小写.
 * 4.规范了格式:脚本命令(如:`Alloc`)中的数字默认为10进制(除`AOBScanModule`的第三个参数`AobString`外),脚本中的汇编指令(如:`mov rax,12345678`)默认为16进制.但是可以通过添加前缀来表示数字进制,如:`alloc(newmem,$100)`中`$100`表示16进制数字100.`mov mov rax,#12345678`中`#12345678`表示10进制数字12345678.
-* 4.当重汇编的指令与原指令的字节长度不同时,会按重汇编的指令的字节长度进行地址对齐
+* 5.当重汇编的指令与原指令的字节长度不同时,会按重汇编的指令的字节长度进行地址对齐
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
