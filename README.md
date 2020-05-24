@@ -7,20 +7,22 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.5.23
+## 更新内容:2020.5.24
 * 1.使用了XEDParse提供的回调函数指针(当XEDParse遇到未知标识符时,给调用者用于修复错误),现在已支持如下的语法
 ```assembly
 	mov [GSymbol + 238],rbx
 	jmp label + 486
 	mov rax,22*4 + Index
 ```
-* 2.当重汇编的指令与原指令的字节长度不同时,会按重汇编的指令的字节长度进行地址对齐
+* 2.特征码扫描使用双线程,提高了当脚本中有多个AOBScanModule命令时的执行速度
+* 3.现在AOBscanmodule指令中模块已可以用双引号进行大小写区分,例如:`AOBscanmodule(Symbol,"xxxx.dll",12 34 56 78 90)`是区分模块名大小写,`AOBscanmodule(Symbol,xxxx.dll,12 34 56 78 90)`是不区分大小写.
+* 4.规范了格式:脚本命令(如:`Alloc`)中的数字默认为10进制(除`AOBScanModule`的第三个参数`AobString`外),脚本中的汇编指令(如:`mov rax,12345678`)默认为16进制.但是可以通过添加前缀来表示数字进制,如:`alloc(newmem,$100)`中`$100`表示16进制数字100.`mov mov rax,#12345678`中`#12345678`表示10进制数字12345678.
+* 4.当重汇编的指令与原指令的字节长度不同时,会按重汇编的指令的字节长度进行地址对齐
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
 	* 正确的示范:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?? FF FF 00 00)`
 * 自动汇编脚本中的涉及到的符号,包括全局符号、分配的内存、标签全部区分大小写!<br>
-* 在自动汇编脚本中,如AOBscanmodule,Alloc命令中涉及到的模块全部不分大小写,也就是说 ``AOBscanmodule(INJECT,"Explorer.EXE",48 B9 FF FF FF FF FF FF 00 00)`` 等价于 ``AOBscanmodule(INJECT,explorer.exe,48 B9 FF FF FF FF FF FF 00 00)``<br>
 * 分配内存符号(AllocedMemorys)是不能起冲突的,如果您在之前的汇编脚本中使用了Alloc(newmem,128)命令,然后在没有释放`newmem`的情况下,在另一个脚本中又使用了Alloc(newmem,128)命令,此时汇编引擎将提示命名冲突,且脚本将不会被执行!<br>
 * 当全局内存符号(RegisteredSymbols)出现重复时,自动汇编引擎并不会提示冲突,而是全局内存符合的值覆盖成新申请的值.<br>
 * 获取地址优先级:全局符号 > 模块 > 静态地址<br>

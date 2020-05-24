@@ -1,7 +1,9 @@
 ﻿using System.Text.RegularExpressions;
 using System;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace AutoAssembler
 {
@@ -60,7 +62,8 @@ namespace AutoAssembler
         }
         public struct AobScan_args
         {
-            public string DefineName;
+            public string OriginCode;
+            public string LabelName;
             public string Module;
             public string AobString;
         }
@@ -142,6 +145,8 @@ namespace AutoAssembler
             Assembler_Status status;
             AutoAssemble_Error = "";
             ErrorState = "";
+            AobScan_args scan_Args = new AobScan_args();
+            List<AobScan_args> AobScans = new List<AobScan_args>();
             Reassemble reassemble;
             List<Reassemble> reassembles = new List<Reassemble>();
             Assembler_Data AsmData = new Assembler_Data();
@@ -170,16 +175,16 @@ namespace AutoAssembler
                 labels.Add(label);
             }
             //首先处理AOBScanModule命令
-            for(i = 0;i < TotalLine; ++i)
+            for (i = 0; i < TotalLine; ++i)
             {
                 Currentline = Codes[i].Trim();
                 InstrPrefix = Currentline.ToUpper();
-                if (Substring(InstrPrefix,0,14) == "AOBSCANMODULE(")
+                if (Substring(InstrPrefix, 0, 14) == "AOBSCANMODULE(")
                 {
                     regex = new Regex(@",");
                     seek = 14;
                     size = Currentline.Length - seek - 1;
-                    string[] args = regex.Split(Substring(Currentline,seek,size));
+                    string[] args = regex.Split(Substring(Currentline, seek, size));
                     TrimArgs(ref args);
                     if (args.Length != 3)
                     {
@@ -187,24 +192,28 @@ namespace AutoAssembler
                         ErrorState = "LackParameters";
                         return false;
                     }
-                    label.LabelName = args[0];
-                    if (LabelExist(label.LabelName,ref labels))
+                    if (LabelExist(args[0], ref labels))
                     {
                         ErrorState = "LabelAlreadyExist";
                         AutoAssemble_Error = ("Symbol: " + args[0] + " already exist!");
                         return false;
                     }
-                    label.Address = Memory.AobScanModule(args[1], args[2]);
-                    if (label.Address == 0)
-                    {//未找到特征码
-                        ErrorState = "AOBScanFailed";
-                        AutoAssemble_Error = "Cannot find AOB's address!Line number:" + i.ToString() + ",Code:" + Codes[i];
-                        return false;
-                    }
-                    labels.Add(label);
+                    scan_Args = new AobScan_args()
+                    {
+                        LabelName = args[0],
+                        Module = args[1],
+                        AobString = args[2],
+                        OriginCode = Currentline
+                    };
+                    AobScans.Add(scan_Args);
                     //清除AOBScan命令，为第二次循环
                     Codes[i] = "";
                 }
+            }
+            //进行特征码扫描
+            if(!AobScanModules(AobScans.ToArray(), ref labels))
+            {
+                goto failed;
             }
             //开始处理其它命令并将不是自动汇编引擎命令的汇编指令加入到汇编指令数组中
             for(i = 0;i < TotalLine; ++i)
@@ -249,7 +258,7 @@ namespace AutoAssembler
                         alloc.AllocName = args[0];
                         try
                         {
-                            alloc.size = StrToInt(args[1]);
+                            alloc.size = StrToInt_10(args[1]);
                         }
                         catch(FormatException)
                         {
@@ -276,7 +285,7 @@ namespace AutoAssembler
                             goto failed ;
                         }
                         alloc.AllocName = args[0];
-                        alloc.Address = Memory.AllocMemory(0, StrToInt(args[1]));
+                        alloc.Address = Memory.AllocMemory(0, StrToInt_10(args[1]));
                         alloc.Zero = true;
                         goto end;
                     }
@@ -390,7 +399,7 @@ namespace AutoAssembler
                         s = Currentline.Substring(4, Currentline.Length - 4);
                         try
                         {
-                            x = Convert.ToInt32(s,16);
+                            x = StrToInt_16(s);
                         }
                         catch (FormatException)
                         {
@@ -583,6 +592,7 @@ namespace AutoAssembler
             //现在将脚本注册的全局符号赋值,汇编脚本处理完毕
             if (!RegisterSymbols(ref registers,ref labels))
                 ok = false;
+            TempLabels = null;
             return ok;
             failed:
             //释放分配的内存
@@ -593,6 +603,7 @@ namespace AutoAssembler
                     FreeAllocMemory(allocs[i].AllocName);
                 }
             }
+            TempLabels = null;
             return false;
         }
         private bool RemoveLabelByName(string name,ref List<Label> labels)
@@ -615,31 +626,64 @@ namespace AutoAssembler
                 dest[i] = src[i];
             }
         }
-        public long StrToLong(string s)
-        {
-            string number;
-            if(s[0] == '$')
-            {
-                number = Substring(s, 1, s.Length - 1);
-                return Convert.ToInt64(number, 16);
-            }
-            else
-            {
-                return Convert.ToInt64(s);
-            }
-        }
-        public int StrToInt(string s)
+        public long StrToLong_10(string s)
         {
             string number;
             if (s[0] == '$')
             {
                 number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt64(number,16);
+            }else if (s[0] == '#')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt64(number);
+            }
+            return Convert.ToInt64(s);
+        }
+        public int StrToInt_10(string s)
+        {
+            string number;
+            if (s[0] == '$')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt32(number,16);
+            }
+            else if (s[0] == '#')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt32(number);
+            }
+            return Convert.ToInt32(s);
+        }
+        public long StrToLong_16(string s)
+        {
+            string number;
+            if (s[0] == '#')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt64(number);
+            }
+            else if (s[0] == '$')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt64(number,16);
+            }
+            return Convert.ToInt64(s,16);
+        }
+        public int StrToInt_16(string s)
+        {
+            string number;
+            if(s[0] == '#')
+            {
+                number = Substring(s, 1, s.Length - 1);
+                return Convert.ToInt32(number);
+            }
+            else if (s[0] == '$')
+            {
+                number = Substring(s, 1, s.Length - 1);
                 return Convert.ToInt32(number, 16);
             }
-            else
-            {
-                return Convert.ToInt32(s);
-            }
+            return Convert.ToInt32(s,16);
         }
         public long GetAddress(string Expression)
         {
@@ -673,7 +717,7 @@ namespace AutoAssembler
                             //未找到模块,判断是否为静态地址
                             try
                             {
-                                temp = Convert.ToInt64(numbers[x].Value, 16);
+                                temp = StrToLong_16(numbers[x].Value);
                             }
                             catch (FormatException)
                             {
@@ -823,6 +867,95 @@ namespace AutoAssembler
                 start++;
             }
         }
+        private bool AobScanModules(AobScan_args[] aobs, ref List<Label> labels)
+        {
+            bool Odd = false;
+            Label MainLabel;
+            long MainResult;
+            if(aobs.Length == 1)
+            {
+                MainResult = Memory.AobScanModule(aobs[0].Module, aobs[0].AobString);
+                if(MainResult == 0)
+                {
+                    ErrorState = "AOBScanFailed";
+                    AutoAssemble_Error = "Cannot find AOB's address!Code:" + aobs[0].OriginCode;
+                    return false;
+                }
+                MainLabel = new Label()
+                {
+                    VirtualLabel = false,
+                    LabelName = aobs[0].LabelName,
+                    Address = MainResult
+                };
+                labels.Add(MainLabel);
+                return true;
+            }
+            if (aobs.Length % 2 != 0)
+                Odd = true;
+            int CurrentIndex = 0;
+            int TaskIndex = aobs.Length / 2;
+            int MainMaxIndex = TaskIndex - 1;
+            long TaskResult;
+            Label TaskLabel;
+            while (CurrentIndex <= MainMaxIndex)
+            {
+                Task<long> task = new Task<long>(() => Memory.AobScanModule(aobs[TaskIndex].Module, aobs[TaskIndex].AobString));
+                task.Start();
+                MainResult = Memory.AobScanModule(aobs[CurrentIndex].Module, aobs[CurrentIndex].AobString);
+                if(MainResult == 0)
+                {
+                    ErrorState = "AOBScanFailed";
+                    AutoAssemble_Error = "Cannot find AOB's address!Code:" + aobs[CurrentIndex].OriginCode;
+                    return false;
+                }
+                while (!task.IsCompleted)
+                {
+                    Thread.Sleep(1);
+                }
+                TaskResult = task.Result;
+                if (TaskResult == 0)
+                {
+                    ErrorState = "AOBScanFailed";
+                    AutoAssemble_Error = "Cannot find AOB's address!Code:" + aobs[TaskIndex].OriginCode;
+                    return false;
+                }
+                MainLabel = new Label()
+                {
+                    VirtualLabel = false,
+                    LabelName = aobs[CurrentIndex].LabelName,
+                    Address = MainResult
+                };
+                TaskLabel = new Label()
+                {
+                    VirtualLabel = false,
+                    LabelName = aobs[TaskIndex].LabelName,
+                    Address = TaskResult
+                };
+                labels.Add(MainLabel);
+                labels.Add(TaskLabel);
+                CurrentIndex++;
+                TaskIndex++;
+            }
+            if (Odd)
+            {
+                MainMaxIndex = aobs.Length - 1;
+                MainResult = Memory.AobScanModule(aobs[MainMaxIndex].Module, aobs[MainMaxIndex].AobString);
+                if (MainResult == 0)
+                {
+                    ErrorState = "AOBScanFailed";
+                    AutoAssemble_Error = "Cannot find AOB's address!Code:" + aobs[MainMaxIndex].OriginCode;
+                    return false;
+                }
+                MainLabel = new Label()
+                {
+                    VirtualLabel = false,
+                    LabelName = aobs[MainMaxIndex].LabelName,
+                    Address = MainResult
+                };
+                labels.Add(MainLabel);
+            }
+            return true;
+        }
         private bool RegisterSymbols(ref List<string> registerSymbols,ref List<Label> labels)
         {
             int SymbolCount = registerSymbols.Count;
@@ -901,7 +1034,7 @@ namespace AutoAssembler
                     {
                         try
                         {
-                            temp = Convert.ToInt64(numbers[i].Value, 16);
+                            temp = StrToLong_16(numbers[i].Value);
                         }
                         catch (FormatException)
                         {
@@ -949,7 +1082,7 @@ namespace AutoAssembler
                     {
                         try
                         {
-                            temp = Convert.ToInt64(numbers[i].Value, 16);
+                            temp = StrToLong_16(numbers[i].Value);
                         }
                         catch (FormatException)
                         {
@@ -995,7 +1128,7 @@ namespace AutoAssembler
                         try
                         {
                             CurrentAddress = reserved;
-                            temp = Convert.ToInt64(numbers[i].Value, 16);
+                            temp = StrToLong_16(numbers[i].Value);
                         }
                         catch (FormatException)
                         {//不是数字和模块,应为未定义标签
@@ -1036,7 +1169,7 @@ namespace AutoAssembler
                 {
                     try
                     {
-                        CurrentAddress = Convert.ToInt64(expression, 16);
+                        CurrentAddress = StrToLong_16(numbers[0].Value);
                     }
                     catch (FormatException)
                     {//不是数字和模块,应为未定义标签

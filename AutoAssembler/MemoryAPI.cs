@@ -199,10 +199,37 @@ namespace AutoAssembler
             }
             return value;
         }
+        private bool Case_Sensitive(ref string module)
+        {
+            int seek, size;
+            seek = module.IndexOf('"');
+            if(seek == -1)
+            {
+                return false;
+            }
+            seek++;
+            size = module.IndexOf('"', seek);
+            if(size == -1)
+            {
+                module = module.Replace("\"", "");
+                return false;
+            }
+            module = module.Substring(seek, size - seek);
+            return true;
+        }
         public long GetModuleBaseaddress(string DLLname)
         {
-            DLLname = DLLname.ToUpper();
             Number[] numbers = OperationParse(DLLname);
+            if(Case_Sensitive(ref numbers[0].Value))
+            {
+                DLLname = numbers[0].Value;
+                foreach (ProcessModule m in ProcessModuleInfo)
+                {
+                    if (m.ModuleName == DLLname)
+                        return (long)m.BaseAddress;
+                }
+                return 0;
+            }
             DLLname = numbers[0].Value.ToUpper();
             foreach (ProcessModule m in ProcessModuleInfo)
             {
@@ -214,11 +241,21 @@ namespace AutoAssembler
         public long GetModuleSize(string DLLname)
         {
             Number[] numbers = OperationParse(DLLname);
+            if (Case_Sensitive(ref numbers[0].Value))
+            {
+                DLLname = numbers[0].Value;
+                foreach (ProcessModule m in ProcessModuleInfo)
+                {
+                    if (m.ModuleName == DLLname)
+                        return (long)m.ModuleMemorySize;
+                }
+                return 0;
+            }
             DLLname = numbers[0].Value.ToUpper();
             foreach (ProcessModule m in ProcessModuleInfo)
             {
-                if (m.ModuleName.ToUpper().Equals(DLLname))
-                    return m.ModuleMemorySize;
+                if (m.ModuleName.ToUpper() == DLLname)
+                    return (long)m.ModuleMemorySize;
             }
             return 0;
         }
