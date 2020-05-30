@@ -10,7 +10,6 @@ A C# Class library like CE's AutoAssembler<br>
 ## 更新内容:2020.5.24
 * 1.使用了XEDParse提供的回调函数指针(当XEDParse遇到未知标识符时,给调用者用于修复错误),现在已支持如下的语法
 ```assembly
-	mov [GSymbol + 238],rbx
 	jmp label + 486
 	mov rax,22*4 + Index
 ```
