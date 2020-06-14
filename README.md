@@ -7,16 +7,13 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.5.24
-* 1.使用了XEDParse提供的回调函数指针(当XEDParse遇到未知标识符时,给调用者用于修复错误),现在已支持如下的语法
-```assembly
-	jmp label + 486
-	mov rax,22*4 + Index
-```
-* 2.特征码扫描使用双线程,提高了当脚本中有多个AOBScanModule命令时的执行速度
-* 3.现在AOBscanmodule指令中模块已可以用双引号进行大小写区分,例如:`AOBscanmodule(Symbol,"xxxx.dll",12 34 56 78 90)`是区分模块名大小写,`AOBscanmodule(Symbol,xxxx.dll,12 34 56 78 90)`是不区分大小写.
-* 4.规范了格式:脚本命令(如:`Alloc`)中的数字默认为10进制(除`AOBScanModule`的第三个参数`AobString`外),脚本中的汇编指令(如:`mov rax,12345678`)默认为16进制.但是可以通过添加前缀来表示数字进制,如:`alloc(newmem,$100)`中`$100`表示16进制数字100.`mov mov rax,#12345678`中`#12345678`表示10进制数字12345678.
-* 5.当重汇编的指令与原指令的字节长度不同时,会按重汇编的指令的字节长度进行地址对齐
+## 更新内容:2020.6.14
+* 使用了新的重汇编模式:
+	* 1.当所有非虚拟标签的地址值被确定以后(即自动汇编引擎命令执行完毕后),会通过寻找所有虚拟标签的父标签来估测所有虚拟标签的地址值<br>
+	* 2.所有引用了虚拟标签的代码都会被记录到标签的references成员中,当虚拟标签拥有实地址值时,重汇编所有引用此标签的代码<br>
+	* 3.若重汇编的代码大小与预测大小不符，会将所有标签以及代码进行地址对齐(在Reassemble函数中通过递归算法实现)<br>
+	* 4.如果进行了地址对齐,为了避免call,jmp等指令因为地址改变而产生错误,所以会在最后会将所有代码重汇编一次(别担心,因为所有的变量都已确定,这一步消耗的时间不会超过5ms).而且若脚本执行过程中没有进行过字节对齐,这一步会跳过.<br>
+	* 5.因为新的重汇编模式具有如上特性,所以它在处理复杂的自动汇编脚本时不会像之前那样经常发生错误,且脚本执行效率和之前基本无差别.<br>
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
