@@ -1,0 +1,14 @@
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.exe
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.deps.json
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.runtimeconfig.json
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.runtimeconfig.dev.json
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.dll
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\bin\x64\Debug\netcoreapp3.1\Example.pdb
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.csprojAssemblyReference.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.AssemblyInfo.cs
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.csproj.CopyComplete
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.dll
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.pdb
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\Example\Example\obj\x64\Debug\netcoreapp3.1\Example.genruntimeconfig.cache
