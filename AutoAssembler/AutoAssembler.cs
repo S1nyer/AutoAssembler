@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.IO;
 
 namespace AutoAssembler
 {
@@ -14,7 +13,8 @@ namespace AutoAssembler
         {
             Memory = API;
             RegisteredSymbols = new List<RegisterSymbol>();
-            AllocedMemorys = new List<AllocedMemory>();
+            Scripts = new List<Script>();
+            TempScriptAlloceds = new List<AllocedMemory>();
             OK = true;
         }
         public AutoAssembler(string ProcessName)
@@ -22,13 +22,19 @@ namespace AutoAssembler
             OK = true;
             Memory = new MemoryAPI(ProcessName);
             RegisteredSymbols = new List<RegisterSymbol>();
-            AllocedMemorys = new List<AllocedMemory>();
-            if (!Memory.ok) OK = false;
-            ErrorState = "OpenProcessFailed";
-            ErrorInfo = "Open process " + ProcessName + " failed!";
+            if (!Memory.ok)
+            {
+                OK = false;
+                ErrorState = "OpenProcessFailed";
+                ErrorInfo = "Open process " + ProcessName + " failed!";
+                return;
+            }
+            Scripts = new List<Script>();
+            TempScriptAlloceds = new List<AllocedMemory>();
         }
         public List<RegisterSymbol> RegisteredSymbols;
-        public List<AllocedMemory> AllocedMemorys;
+        public List<Script> Scripts;
+        public List<AllocedMemory> TempScriptAlloceds;
         public string ErrorInfo;
         public string ErrorState;
         public bool OK;
@@ -132,6 +138,60 @@ namespace AutoAssembler
         const int MEM_WRITE_WATCH = 0x200000;
         const int MEM_PHYSICAL = 0x400000;
         const int MEM_LARGE_PAGES = 0x20000000;
+        public bool AddScript(string ScriptName,string ScriptCode)
+        {
+            for(int i = 0; i < Scripts.Count; i++)
+            {
+                if (ScriptName == Scripts[i].Name)
+                {
+                    ErrorInfo = "Script " + ScriptName + " already exist!";
+                    return false;
+                }
+            }
+            Script script = new Script
+            {
+                Name = ScriptName,
+                ScriptCode = ScriptCode,
+                alloceds = new List<AllocedMemory>()
+            };
+            Scripts.Add(script);
+            return true;
+        }
+        public bool RemoveScript(string ScriptName)
+        {
+            for (int i = 0; i < Scripts.Count; i++)
+            {
+                if (ScriptName == Scripts[i].Name)
+                {
+                    if (Scripts[i].IsEnable)
+                    {
+                        ErrorInfo = "Script " + ScriptName + " is running!You cannot remove it unless disable it.";
+                        return false;
+                    }
+                    Scripts.RemoveAt(i);
+                    return true;
+                }
+            }
+            ErrorInfo = "Script " + ScriptName + " not exist!";
+            return false;
+        }
+        public bool RunScript(string ScriptName)
+        {
+            for(int i = 0; i < Scripts.Count; i++)
+            {
+                if (ScriptName != Scripts[i].Name)
+                    continue;
+                string[] codes = GetExecuteMode(Scripts[i].ScriptCode, Scripts[i].Enable);
+                if(AutoAssemble(codes,ref Scripts[i].alloceds))
+                {
+                    Scripts[i].Enable = !Scripts[i].Enable;
+                    return true;
+                }
+                return false;
+            }
+            ErrorInfo = "Cannot find script " + ScriptName + " !";
+            return false;
+        }
         public string GetErrorInfo()
         {
             return ErrorInfo;
@@ -143,9 +203,9 @@ namespace AutoAssembler
         public bool AutoAssemble(string Code,bool Enable)
         {
             string[] codes = GetExecuteMode(Code, Enable);
-            return AutoAssemble(codes);
+            return AutoAssemble(codes,ref TempScriptAlloceds);
         }
-        public bool AutoAssemble(string[] Codes)
+        public bool AutoAssemble(string[] Codes,ref List<AllocedMemory> alloceds)
         {
             //初始化各种数据
             List<string> AssembleCode = new List<string>();
@@ -171,7 +231,7 @@ namespace AutoAssembler
             ErrorState = "";
             string CurrentParentLabel = null;
             bool LastReassemble = false;
-            int TotalLine,i, j, x;
+            int TotalLine,i, j;
             Regex regex;
             int seek, size;//用于截取字符
             long CurrentAddress = 0;
@@ -185,8 +245,16 @@ namespace AutoAssembler
                 label.VirtualLabel = false;
                 labels.Add(label);
             }
+            //将分配的内存(alloceds)分配给脚本内部标签
+            for(i = 0; i < alloceds.Count; i++)
+            {
+                label.LabelName = alloceds[i].AllocName;
+                label.Address = alloceds[i].Address;
+                label.VirtualLabel = false;
+                labels.Add(label);
+            }
             //首先处理AOBScanModule命令
-            for (i = 0; i < TotalLine; ++i)
+            for (i = 0; i < TotalLine; i++)
             {
                 Currentline = Codes[i].Trim();
                 InstrPrefix = Currentline.ToUpper();
@@ -227,7 +295,7 @@ namespace AutoAssembler
                 goto failed;
             }
             //开始处理其它命令并将不是自动汇编引擎命令的汇编指令加入到汇编指令数组中
-            for(i = 0;i < TotalLine; ++i)
+            for (i = 0;i < TotalLine; ++i)
             {
                 Currentline = Codes[i].Trim();
                 if (String.IsNullOrEmpty(Codes[i]))
@@ -260,7 +328,7 @@ namespace AutoAssembler
                     }
                     if(args.Length == 3)
                     {
-                        if (AllocExist(args[0], AllocedMemorys))
+                        if (AllocExist(args[0], alloceds))
                         {
                             ErrorState = "AllocAlreadyExist";
                             ErrorInfo = "Symbol: " + args[0] + " already alloc!";
@@ -289,7 +357,7 @@ namespace AutoAssembler
                     }
                     if(args.Length == 2)
                     {
-                        if (AllocExist(args[0], AllocedMemorys))
+                        if (AllocExist(args[0], alloceds))
                         {
                             ErrorInfo = ("Symbol: " + args[0] + " already alloc!");
                             ErrorState = "AllocAlreadyExist";
@@ -307,7 +375,7 @@ namespace AutoAssembler
                     }
                     if(alloc.Address == 0)
                     {
-                        ErrorInfo = "Alloc memory " + allocs[i].AllocName + "failed!";
+                        ErrorInfo = "Alloc memory " + allocs[i].AllocName + " failed!";
                         ErrorState = "MemoryAllocFailed";
                         goto failed;
                     }
@@ -466,7 +534,14 @@ namespace AutoAssembler
                     }
                     if (address.isVirtualLabel)
                     {
-                        label = labels[FindLabelIndex(address.Label, ref labels)];
+                        int index = FindLabelIndex(address.Label, ref labels);
+                        if (index == -1)
+                        {
+                            ErrorInfo = ("Undefined label: " + address.Label + " !" + " Code: " + Codes[i]);
+                            ErrorState = "UndefinedLabel";
+                            goto failed;
+                        }
+                        label = labels[index];
                         if (!RemoveLabelByName(address.Label,ref labels))
                         {
                             ErrorInfo = ("Undefined label: " + address.Label + " !" + " Code: " + Codes[i]);
@@ -481,7 +556,7 @@ namespace AutoAssembler
                         labels.Add(label);
                         reassemble_args.LabelIndex = labels.Count - 1;
                         //标签位置已确定,对引用标签的代码进行校正
-                        if (!Reassemble(ref Codes, ref labels, ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LabelCorrection))
+                        if (!Reassemble(Codes,ref labels,ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LabelCorrection))
                         {
                             goto failed;
                         }
@@ -497,7 +572,7 @@ namespace AutoAssembler
             //汇编指令已处理完毕,检查是否需要重汇编
             if (LastReassemble)
             {
-                if (!Reassemble(ref Codes, ref labels, ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LastReassemble))
+                if (!Reassemble(Codes,ref labels,ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LastReassemble))
                     goto failed;
             }
             //将分散的汇编指令以区块为标准合并
@@ -508,16 +583,14 @@ namespace AutoAssembler
             {
                 if (allocs[i].Zero == true)
                 {
-                    AllocedMemorys.Add(allocs[i]);
                     continue;
                 }
                 if (Memory.AllocMemory(allocs[i].Address, allocs[i].size) == 0)
                 {
-                    ErrorInfo = "Alloc memory " + allocs[i].AllocName + "failed!Near Address:"+allocs[i].Address.ToString("x");
+                    ErrorInfo = "Alloc memory " + allocs[i].AllocName + " failed!Near Address:"+allocs[i].Address.ToString("x");
                     ErrorState = "MemoryAllocFailed";
                     goto failed;
                 }
-                AllocedMemorys.Add(allocs[i]);
             }
             //开始执行写入内存操作
             for(i = 0;i < assembledArray.Length; ++i)
@@ -530,10 +603,15 @@ namespace AutoAssembler
                 } 
             }
             //执行释放内存操作
+            List<AllocedMemory> tempAllocs = new List<AllocedMemory>();
+            for (i = 0; i < alloceds.Count; i++)
+                tempAllocs.Add(alloceds[i]);
+            for (i = 0; i < allocs.Count; i++)
+                tempAllocs.Add(allocs[i]);
             for(i = 0; i < Deallocs.Count;++i)
             {
                 s = Deallocs[i];
-                if (!FreeAllocMemory(s))
+                if (!FreeAllocMemory(s,tempAllocs))
                 {
                     ErrorState = "FreeMemoryError";
                     ErrorInfo = "Free memory " + s + " error!";
@@ -552,7 +630,9 @@ namespace AutoAssembler
                     continue;
                 }
             }
-            //现在将脚本注册的全局符号赋值,汇编脚本处理完毕
+            //将脚本注册的全局符号赋值,将分配的内存(alloceds)更新,汇编脚本处理完毕
+            for (i = 0; i < allocs.Count; ++i)
+                alloceds.Add(allocs[i]);
             if (!RegisterSymbols(ref registers,ref labels))
                 ok = false;
             return ok;
@@ -562,7 +642,7 @@ namespace AutoAssembler
             {
                 if (allocs[i].Zero)
                 {
-                    FreeAllocMemory(allocs[i].AllocName);
+                    FreeAllocMemory(allocs[i].AllocName,allocs);
                 }
             }
             return false;
@@ -573,7 +653,7 @@ namespace AutoAssembler
             public int ReferenceIndex;
             public int diff;
         }
-        private bool Reassemble(ref string[] codes, ref List<Label> labels, ref List<Assembled> assembleds, ref long CurrentAddress, Reassemble_Args args,ref bool LastReassemble, ReassembleType type)
+        private bool Reassemble(string[] codes,ref List<Label> labels,ref List<Assembled> assembleds, ref long CurrentAddress, Reassemble_Args args,ref bool LastReassemble, ReassembleType type)
         {
             switch (type)
             {
@@ -615,7 +695,7 @@ namespace AutoAssembler
                     assembleds.RemoveAt(reference.AssembledsReflect);
                     assembleds.Insert(reference.AssembledsReflect, assembled);
                     args.ReferenceIndex = i;
-                    if (!Reassemble(ref codes, ref labels, ref assembleds, ref CurrentAddress, args,ref LastReassemble, ReassembleType.AddressAligned))
+                    if (!Reassemble(codes,ref labels,ref assembleds, ref CurrentAddress, args,ref LastReassemble, ReassembleType.AddressAligned))
                     {
                         goto Failed;
                     }
@@ -691,7 +771,7 @@ namespace AutoAssembler
                     labels.RemoveAt(i);
                     labels.Insert(i, label);
                     args.LabelIndex = i;
-                    if (!Reassemble(ref codes, ref labels, ref assembleds, ref CurrentAddress, args, ref LastReassemble,ReassembleType.LabelCorrection))
+                    if (!Reassemble(codes,ref labels,ref assembleds, ref CurrentAddress, args, ref LastReassemble,ReassembleType.LabelCorrection))
                         goto Failed;
                 }
             }
@@ -847,6 +927,15 @@ namespace AutoAssembler
                 dest[i] = src[i];
             }
         }
+        private void ByteCopy(byte[] src, byte[] dest, int start, int Lenth)
+        {
+            int accumulate = 0;
+            for (int i = start; accumulate < Lenth; ++i)
+            {
+                dest[i] = src[accumulate];
+                ++accumulate;
+            }
+        }
         public long StrToLong_10(string s)
         {
             string number;
@@ -915,7 +1004,7 @@ namespace AutoAssembler
             long temp = 0;
             for (int i = 0; i < SplitExps.Length; i++)
             {
-                MemoryAPI.Number[] numbers = Memory.OperationParse(SplitExps[i]);
+                MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(SplitExps[i]);
                 int x = 0;
                 while (x < numbers.Length)
                 {
@@ -1219,7 +1308,7 @@ namespace AutoAssembler
         }
         private bool ParseCallBack(string text,ref Int64 retvalue)
         {
-            MemoryAPI.Number[] numbers = Memory.OperationParse(text);
+            MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(text);
             long temp;
             long Value = 0;
             for (int i = 0; i < numbers.Length; ++i)
@@ -1259,7 +1348,7 @@ namespace AutoAssembler
             {
                 isVirtualLabel = false
             };
-            MemoryAPI.Number[] numbers = Memory.OperationParse(expression);
+            MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(expression);
             if (numbers.Length == 1) goto label;
             for (int i = 0; i < numbers.Length; ++i)
             {
@@ -1342,7 +1431,6 @@ namespace AutoAssembler
             int loop = labels.Count;
             int loop2 = codes.Length;
             long temp;
-            long diff = 0;
             Label label = new Label();
             for(int i = 0; i < loop; ++i)
             {
@@ -1389,75 +1477,63 @@ namespace AutoAssembler
         }
         private Assembled[] MergeAssembles(Assembled[] assembleds)
         {
-            byte[] Bytes;
-            long Address = 0;
-            Assembled assembled = new Assembled();
-            List<Assembled> assembledBlock = new List<Assembled>();
+            Assembled assembled;
+            List<Assembled> assembledBlocks = new List<Assembled>();
             int BlockSize = 0;
             int loop = assembleds.Length;
-            int times = 0;
-            for(int i = 0;i < loop; ++i)
+            int Position = 0, Start;
+            long cip;
+            int i, j;
+            while (Position < loop)
             {
-                if(i+1 == loop)
+                int count = 0;
+                BlockSize = 0;
+                Start = Position;
+                for (i = Position; i < loop; ++i)
                 {
-                    if(loop == 1)
+                    cip = assembleds[i].CurrentAddress + assembleds[i].AssembledBytes.Length;
+                    if (Position + 1 == loop)
                     {
-                        assembled.AssembledBytes = assembleds[0].AssembledBytes;
-                        assembled.CurrentAddress = assembleds[0].CurrentAddress;
-                        assembledBlock.Add(assembled);
-                        return assembledBlock.ToArray();
-                    }
-                    long x = assembleds[i - 1].CurrentAddress + assembleds[i - 1].AssembledBytes.Length;
-                    if (x == assembleds[i].CurrentAddress)
-                    {//处理到数组最后一个元素
                         BlockSize += assembleds[i].AssembledBytes.Length;
-                        assembled.CurrentAddress = assembleds[i - times].CurrentAddress;
-                        int index = 0;
-                        Bytes = new byte[BlockSize];
-                        while (times >= 0)
-                        {
-                            assembleds[i - times].AssembledBytes.CopyTo(Bytes, index);
-                            index += assembleds[i - times].AssembledBytes.Length;
-                            times--;
-                        }
-                        assembled.AssembledBytes = Bytes;
-                        assembledBlock.Add(assembled);
+                        Position++;
+                        count++;
+                        break;
+                    }
+                    if (cip == assembleds[i + 1].CurrentAddress)
+                    {
+                        BlockSize += assembleds[i].AssembledBytes.Length;
+                        Position++;
+                        count++;
+                        continue;
+                    }
+                    else if (Position == loop)
+                    {
                         break;
                     }
                     else
                     {
-                        assembled.AssembledBytes = assembleds[i].AssembledBytes;
-                        assembled.CurrentAddress = assembleds[i].CurrentAddress;
-                        assembledBlock.Add(assembled);
+                        BlockSize += assembleds[i].AssembledBytes.Length;
+                        Position++;
+                        count++;
                         break;
                     }
                 }
-                Address = assembleds[i].CurrentAddress + assembleds[i].AssembledBytes.Length;
-                if(Address == assembleds[i + 1].CurrentAddress)
+                assembled = new Assembled()
                 {
-                    times++;
-                    BlockSize += assembleds[i].AssembledBytes.Length;
-                    continue;
-                }
-                else
+                    AssembledBytes = new byte[BlockSize],
+                    CurrentAddress = assembleds[Start].CurrentAddress
+                };
+                int accumulate = 0;
+                i = Start;
+                for (j = 0; j < count; ++j)
                 {
-                    BlockSize += assembleds[i].AssembledBytes.Length;
-                    assembled.CurrentAddress = assembleds[i - times].CurrentAddress;//取首汇编指令的地址
-                    int index = 0;
-                    Bytes = new byte[BlockSize];
-                    while(times >= 0)
-                    {
-                        assembleds[i - times].AssembledBytes.CopyTo(Bytes, index);
-                        index += assembleds[i - times].AssembledBytes.Length;
-                        times--;
-                    }
-                    times = 0;
-                    BlockSize = 0;
-                    assembled.AssembledBytes = Bytes;
-                    assembledBlock.Add(assembled);
+                    ByteCopy(assembleds[i].AssembledBytes, assembled.AssembledBytes, accumulate, assembleds[i].AssembledBytes.Length);
+                    accumulate += assembleds[i].AssembledBytes.Length;
+                    ++i;
                 }
+                assembledBlocks.Add(assembled);
             }
-            return assembledBlock.ToArray();
+            return assembledBlocks.ToArray();
         }
         private int FindLabelIndex(string name,ref List<Label> labels)
         {
@@ -1483,14 +1559,14 @@ namespace AutoAssembler
             }
             return -1;
         }
-        public bool FreeAllocMemory(string AllocName)
+        public bool FreeAllocMemory(string AllocName,List<AllocedMemory> alloceds)
         {
-            for (int i = 0; i < AllocedMemorys.Count; ++i)
+            for (int i = 0; i < alloceds.Count; i++)
             {
-                if (AllocName == AllocedMemorys[i].AllocName)
+                if (AllocName == alloceds[i].AllocName)
                 {
-                    bool ok = MemoryAPI.VirtualFreeEx(Memory.ProcessHandle,AllocedMemorys[i].Address, AllocedMemorys[i].size,MEM_DECOMMIT);
-                    AllocedMemorys.RemoveAt(i);
+                    bool ok = MemoryAPI.VirtualFreeEx(Memory.ProcessHandle, alloceds[i].Address, alloceds[i].size,MEM_DECOMMIT);
+                    alloceds.RemoveAt(i);
                     return ok;
                 }
             }
