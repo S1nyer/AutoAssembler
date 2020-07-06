@@ -67,6 +67,11 @@ namespace AutoAssembler
             LastReassemble,
             AddressAligned,
         }
+        public struct Define
+        {
+            public string Original;
+            public string Replace;
+        }
         public struct Assembled
         {
             public byte[] AssembledBytes;
@@ -223,16 +228,18 @@ namespace AutoAssembler
             Reference reference;
             List<Label> labels = new List<Label>();
             Assembled assembled = new Assembled();
+            Define define;
+            List<Define> defines = new List<Define>();
             Address address = new Address();
             List<Assembled> assembleds = new List<Assembled>();
             List<string> registers = new List<string>();
+            string[] Instr_args;
             string Currentline, s = "";
             ErrorInfo = "";
             ErrorState = "";
             string CurrentParentLabel = null;
             bool LastReassemble = false;
             int TotalLine,i, j;
-            Regex regex;
             int seek, size;//用于截取字符
             long CurrentAddress = 0;
             TotalLine = Codes.Length;
@@ -253,40 +260,65 @@ namespace AutoAssembler
                 label.VirtualLabel = false;
                 labels.Add(label);
             }
-            //首先处理AOBScanModule命令
+            //首先处理AOBScanModule命令和Define命令
+            char[] Sep_comma = { ',' };
+            char[] Sep_space = { ' ' };
             for (i = 0; i < TotalLine; i++)
             {
                 Currentline = Codes[i].Trim();
                 InstrPrefix = Currentline.ToUpper();
                 if (Substring(InstrPrefix, 0, 14) == "AOBSCANMODULE(")
                 {
-                    regex = new Regex(@",");
-                    seek = 14;
-                    size = Currentline.Length - seek - 1;
-                    string[] args = regex.Split(Substring(Currentline, seek, size));
-                    TrimArgs(ref args);
-                    if (args.Length != 3)
+                    Instr_args = ArgsParse(Currentline, Sep_comma);
+                    TrimArgs(ref Instr_args);
+                    if (Instr_args.Length != 3)
                     {
                         ErrorInfo = ("AobScan parameters Error!Line number:" + i.ToString() + ",Code:" + Codes[i]);
                         ErrorState = "LackParameters";
                         return false;
                     }
-                    if (LabelExist(args[0], ref labels))
+                    if (LabelExist(Instr_args[0], ref labels))
                     {
                         ErrorState = "LabelAlreadyExist";
-                        ErrorInfo = ("Symbol: " + args[0] + " already exist!");
+                        ErrorInfo = ("Symbol: " + Instr_args[0] + " already exist!");
                         return false;
                     }
                     scan_Args = new AobScan_args()
                     {
-                        LabelName = args[0],
-                        Module = args[1],
-                        AobString = args[2],
+                        LabelName = Instr_args[0],
+                        Module = Instr_args[1],
+                        AobString = Instr_args[2],
                         OriginCode = Currentline
                     };
                     AobScans.Add(scan_Args);
                     //清除AOBScan命令，为第二次循环
                     Codes[i] = "";
+                    continue;
+                }
+                if (Substring(InstrPrefix, 0, 7) == "#DEFINE")
+                {
+                    s = Substring(Currentline, 8, Currentline.Length - 8);
+                    Instr_args = s.Split(Sep_space);
+                    if(Instr_args.Length < 2 || Instr_args.Length > 2)
+                    {
+                        ErrorState = "InvalidCode";
+                        ErrorInfo = "Syntax error: " + InstrPrefix + " !";
+                        return false;
+                    }
+                    if(DefineExist(Instr_args[0],ref defines))
+                    {
+                        ErrorState = "DefineAlreadyExist";
+                        ErrorInfo = "Define " + Instr_args[0] + " already exist!";
+                        return false;
+                    }
+                    define = new Define
+                    {
+                        Original = Instr_args[0],
+                        Replace = Instr_args[1]
+                    };
+                    defines.Add(define);
+                    Codes[i] = "";
+                    continue;
                 }
             }
             //进行特征码扫描
@@ -302,42 +334,33 @@ namespace AutoAssembler
                 {
                     continue;
                 }
-                if (Substring(Currentline, 0, 2) == "//")
-                {
-                    continue;
-                }
                 if (Codes[i].IndexOf("//") > 0)
                 {
                     Currentline = Codes[i].Substring(0, Codes[i].Length - Codes[i].IndexOf("//"));
                 }
-                regex = new Regex(@",");
-                string[] args;
                 InstrPrefix = Currentline.ToUpper();
                 if (Substring(InstrPrefix, 0, 6) == "ALLOC(")
                 {
-                    Currentline = Currentline.Replace("\"", "");
-                    seek = Currentline.IndexOf("(") + 1;
-                    size = Currentline.Length - seek - 1;
-                    args = regex.Split(Substring(Currentline,seek,size));
-                    TrimArgs(ref args);
-                    if (args.Length > 3) 
+                    Instr_args = ArgsParse(Currentline,Sep_comma);
+                    TrimArgs(ref Instr_args);
+                    if (Instr_args.Length > 3) 
                     { 
                         ErrorInfo = "Alloc parameters overload!Line number:" + i.ToString() + ",Code:" + Codes[i];
                         ErrorState = "ParametersOverload";
                         goto failed;
                     }
-                    if(args.Length == 3)
+                    if(Instr_args.Length == 3)
                     {
-                        if (AllocExist(args[0], alloceds))
+                        if (AllocExist(Instr_args[0], alloceds))
                         {
                             ErrorState = "AllocAlreadyExist";
-                            ErrorInfo = "Symbol: " + args[0] + " already alloc!";
+                            ErrorInfo = "Symbol: " + Instr_args[0] + " already alloc!";
                             goto failed;
                         }
-                        alloc.AllocName = args[0];
+                        alloc.AllocName = Instr_args[0];
                         try
                         {
-                            alloc.size = StrToInt_10(args[1]);
+                            alloc.size = StrToInt_10(Instr_args[1]);
                         }
                         catch(FormatException)
                         {
@@ -345,7 +368,7 @@ namespace AutoAssembler
                             ErrorState = "NotValidInteger";
                             goto failed;
                         }
-                        long NearAddress = GetAddress(args[2]);
+                        long NearAddress = GetAddress(Instr_args[2]);
                         if(NearAddress == 0)
                         {
                             ErrorInfo = ("Parameter 3 gives an unknown module!Line number:" + i.ToString() + ",Code:" + Codes[i]);
@@ -355,20 +378,20 @@ namespace AutoAssembler
                         alloc.Zero = false;
                         alloc.Address = Memory.FindNearFreeBlock(NearAddress,alloc.size);
                     }
-                    if(args.Length == 2)
+                    if(Instr_args.Length == 2)
                     {
-                        if (AllocExist(args[0], alloceds))
+                        if (AllocExist(Instr_args[0], alloceds))
                         {
-                            ErrorInfo = ("Symbol: " + args[0] + " already alloc!");
+                            ErrorInfo = ("Symbol: " + Instr_args[0] + " already alloc!");
                             ErrorState = "AllocAlreadyExist";
                             goto failed ;
                         }
-                        alloc.AllocName = args[0];
-                        alloc.Address = Memory.AllocMemory(0, StrToInt_10(args[1]));
+                        alloc.AllocName = Instr_args[0];
+                        alloc.Address = Memory.AllocMemory(0, StrToInt_10(Instr_args[1]));
                         alloc.Zero = true;
                         goto end;
                     }
-                    if(args.Length < 2)
+                    if(Instr_args.Length < 2)
                     {
                         ErrorInfo = ("Alloc parameters Error!Line number:" + i.ToString() + ",Code:" + Codes[i]);
                         goto failed;
@@ -449,6 +472,12 @@ namespace AutoAssembler
                 AssembleCode.Add(Currentline);
             }
             Codes = AssembleCode.ToArray();
+            //将Define命令申请的字符替换
+            for(i = 0; i < defines.Count; i++)
+            {
+                for (j = 0; j < Codes.Length; j++)
+                    Codes[j] = Codes[j].Replace(defines[i].Original, defines[i].Replace);
+            }
             //对虚拟标签进行估测,对TempLabels进行赋值
             if(!GuessVirtualLabel(ref labels,ref Codes))
             {
@@ -813,6 +842,31 @@ namespace AutoAssembler
                 ++i;
             }
             return code;
+        }
+        private bool DefineExist(string define,ref List<Define> defines)
+        {
+            for(int i = 0; i < defines.Count; i++)
+            {
+                if (define == defines[i].Original)
+                    return true;
+            }
+            return false;
+        }
+        private string[] ArgsParse(string Expression,char[] Separator)
+        {
+            int seek, length;
+            seek = Expression.IndexOf('(');
+            length = Expression.LastIndexOf(')');
+            if(seek == -1 || length == -1)
+            {
+                ErrorState = "InvalidCode";
+                ErrorInfo = "Invalid expression: " + Expression + " !";
+                return null;
+            }
+            length = length - seek - 1;
+            string temp = Expression.Substring(seek + 1, length);
+            string[] args = temp.Split(Separator);
+            return args;
         }
         public struct IAssemble
         {

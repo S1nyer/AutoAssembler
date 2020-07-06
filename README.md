@@ -4,10 +4,10 @@ A C# Class library like CE's AutoAssembler<br>
 * 此自动汇编引擎使用的汇编指令解析器是x64dbg的[XEDParse](https://github.com/x64dbg/XEDParse).<br>
 `感谢这些优秀的开发者们,如有侵权请联系删除!`<br>
 * 目前此自动汇编引擎支持的脚本命令有
-  * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread<br>
+  * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define(这个指令和CE规定的用法不同,详细见下面的注意事项)<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.7.5
+## 更新内容:2020.7.6
 * 1.在自动汇编引擎添加了Script类,现在支持以这种方式执行脚本:(当然,`AutoAssemble(ScriptCode,EnableType);`这种执行脚本的方式仍然支持)
 ```c#
 	AutoAssembler Assembler = new AutoAssembler(ProcessName);
@@ -26,8 +26,20 @@ A C# Class library like CE's AutoAssembler<br>
 ```
 * 2.添加到自动汇编引擎的脚本,会有独立的内存分配堆,并且脚本之间不会相互干扰;在A脚本中申请内存`newmem`,然后再在B脚本中申请内存`newmem`也是可以的。但在同一个脚本中,仍然不允许申请重复的内存符号.<br>
 * 3.上面曾说:`AutoAssemble(ScriptCode,EnableType);`这种执行脚本的方式仍然支持.那么,这种匿名脚本所申请的内存实际是储存在自动汇编引擎中`TempScriptAlloceds`成员里的,同样,匿名脚本不允许申请重复的内存符号.<br>
-* 4.优化了合并汇编代码函数`MergeAssembles`,使分散代码合并成区块效率提高.
+* 4.添加了新的命令Define,它在自动汇编脚本中可以这样使用:
+```assembly
+	#Define FullHealth (float)100.0
+	......
+	mov rax,FullHealth
+```
+* 5.优化了合并汇编代码函数`MergeAssembles`,使分散代码合并成区块效率提高.
 ## 下面是注意事项:
+* Define命令要这样用`#Define original replace`,注意中间有空格!示范:
+```assembly
+	#Define FullHealth (float)100.0
+	......
+	mov rax,FullHealth
+```
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
 * `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
 	* 正确的示范:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?? FF FF 00 00)`
