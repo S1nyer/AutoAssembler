@@ -162,13 +162,25 @@ namespace AutoAssembler
             Scripts.Add(script);
             return true;
         }
+        public Script.Status GetScriptStatus(string ScriptName)
+        {
+            for (int i = 0; i < Scripts.Count; i++)
+            {
+                if (ScriptName == Scripts[i].Name)
+                {
+                    return Scripts[i].GetStatus;
+                }
+            }
+            ErrorInfo = "Script " + ScriptName + " not exist!";
+            return Script.Status.Inexistence;
+        }
         public bool RemoveScript(string ScriptName)
         {
             for (int i = 0; i < Scripts.Count; i++)
             {
                 if (ScriptName == Scripts[i].Name)
                 {
-                    if (Scripts[i].IsEnable)
+                    if (Scripts[i].GetStatus == Script.Status.Enabled)
                     {
                         ErrorInfo = "Script " + ScriptName + " is running!You cannot remove it unless disable it.";
                         return false;
@@ -660,8 +672,7 @@ namespace AutoAssembler
                 }
             }
             //将脚本注册的全局符号赋值,将分配的内存(alloceds)更新,汇编脚本处理完毕
-            for (i = 0; i < allocs.Count; ++i)
-                alloceds.Add(allocs[i]);
+            alloceds = tempAllocs;
             if (!RegisterSymbols(ref registers,ref labels))
                 ok = false;
             return ok;

@@ -7,7 +7,7 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define(这个指令和CE规定的用法不同,详细见下面的注意事项)<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.7.6
+## 更新内容:2020.7.7
 * 1.在自动汇编引擎添加了Script类,现在支持以这种方式执行脚本:(当然,`AutoAssemble(ScriptCode,EnableType);`这种执行脚本的方式仍然支持)
 ```c#
 	AutoAssembler Assembler = new AutoAssembler(ProcessName);
@@ -32,7 +32,8 @@ A C# Class library like CE's AutoAssembler<br>
 	......
 	mov rax,FullHealth
 ```
-* 5.优化了合并汇编代码函数`MergeAssembles`,使分散代码合并成区块效率提高.
+* 5.修复了脚本独立内存堆无法释放的bug.
+* 6.优化了合并汇编代码函数`MergeAssembles`,使分散代码合并成区块效率提高.
 ## 下面是注意事项:
 * Define命令要这样用`#Define original replace`,注意中间有空格!示范:
 ```assembly

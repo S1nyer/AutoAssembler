@@ -107,7 +107,7 @@ namespace AutoAssembler
             public string Value;
             public OperationType Type;
         }
-        public Number[] OperationParse(string Exp)
+        public static Number[] OperationParse(string Exp)
         {
             Number number;
             int[] pos = new int[3];
@@ -158,7 +158,7 @@ namespace AutoAssembler
             }
             return numbers.ToArray();
         }
-        private int MinIndex(int[] array)
+        private static int MinIndex(int[] array)
         {
             int index = 0;
             for (int i = 0; i < array.Length; ++i)
