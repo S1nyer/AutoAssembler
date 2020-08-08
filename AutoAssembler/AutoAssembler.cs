@@ -206,6 +206,7 @@ namespace AutoAssembler
                 }
                 return false;
             }
+            ErrorState = "InvalidScript";
             ErrorInfo = "Cannot find script " + ScriptName + " !";
             return false;
         }
@@ -760,8 +761,10 @@ namespace AutoAssembler
                 code = codes[i];
                 if(code[code.Length-1] == ':')
                 {
-                    int index = FindLabelIndex(Substring(code, 0, code.Length - 1), ref labels);
-                    if(index == -1)
+                    string s = code.Substring(0, code.IndexOf(":")).Trim();
+                    Address adrex = LabelParse(s, ref labels, CurrentAddress);
+                    int index = FindLabelIndex(adrex.Label, ref labels);
+                    if (index == -1)
                     {
                         ErrorState = "InvalidCode";
                         ErrorInfo = "Reassemble code failed!Error code:\r\n" + code;
