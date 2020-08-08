@@ -7,33 +7,9 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define(这个指令和CE规定的用法不同,详细见下面的注意事项)<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.7.7
-* 1.在自动汇编引擎添加了Script类,现在支持以这种方式执行脚本:(当然,`AutoAssemble(ScriptCode,EnableType);`这种执行脚本的方式仍然支持)
-```c#
-	AutoAssembler Assembler = new AutoAssembler(ProcessName);
-	if(!Assembler.ok)
-	{
-		Console.WriteLine(Assembler.ErrorInfo);
-		Console.ReadKey();
-	}
-	Assembler.AddScript(ScriptName, ScriptCode);
-	if (!Assembler.RunScript(ScriptName)) 
-    {
-			Console.WriteLine(Assembler.ErrorInfo);
-			Console.ReadKey();
-			return;
-    };	
-```
-* 2.添加到自动汇编引擎的脚本,会有独立的内存分配堆,并且脚本之间不会相互干扰;在A脚本中申请内存`newmem`,然后再在B脚本中申请内存`newmem`也是可以的。但在同一个脚本中,仍然不允许申请重复的内存符号.<br>
-* 3.上面曾说:`AutoAssemble(ScriptCode,EnableType);`这种执行脚本的方式仍然支持.那么,这种匿名脚本所申请的内存实际是储存在自动汇编引擎中`TempScriptAlloceds`成员里的,同样,匿名脚本不允许申请重复的内存符号.<br>
-* 4.添加了新的命令Define,它在自动汇编脚本中可以这样使用:
-```assembly
-	#Define FullHealth (float)100.0
-	......
-	mov rax,FullHealth
-```
-* 5.修复了脚本独立内存堆无法释放的bug.
-* 6.优化了合并汇编代码函数`MergeAssembles`,使分散代码合并成区块效率提高.
+## 更新内容:2020.8.8
+* 1.修复了重汇编函数在校正地址时,会错误地调整其它代码块地址的bug.
+* 2.修复了在 LastReassemble 过程中,自动汇编引擎无法识别 `Label+Offset:` 格式的错误.
 ## 下面是注意事项:
 * Define命令要这样用`#Define original replace`,注意中间有空格!示范:
 ```assembly

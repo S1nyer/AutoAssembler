@@ -693,6 +693,31 @@ namespace AutoAssembler
             public int LabelIndex;
             public int ReferenceIndex;
             public int diff;
+            public string ParentLabel;
+        }
+        private string FindParentLabelByPosition(ref List<Label> labels,string[] codes,int index)
+        {
+            string s;
+            for(int i = index;i > 0; i--)
+            {
+                if(codes[i][codes[i].Length-1] == ':')
+                {
+                    s = codes[i].Substring(0, codes[i].IndexOf(":")).Trim();
+                    Address adrex = LabelParse(s, ref labels, 0);
+                    if (string.IsNullOrEmpty(adrex.Label))
+                        continue;
+                    int x = FindLabelIndex(adrex.Label, ref labels);
+                    if (string.IsNullOrEmpty(labels[x].ParentLabel))
+                    {
+                        return labels[x].LabelName;
+                    }
+                    else
+                    {
+                        return labels[x].ParentLabel;
+                    }
+                }
+            }
+            return null;
         }
         private bool Reassemble(string[] codes,ref List<Label> labels,ref List<Assembled> assembleds, ref long CurrentAddress, Reassemble_Args args,ref bool LastReassemble, ReassembleType type)
         {
@@ -736,6 +761,7 @@ namespace AutoAssembler
                     assembleds.RemoveAt(reference.AssembledsReflect);
                     assembleds.Insert(reference.AssembledsReflect, assembled);
                     args.ReferenceIndex = i;
+                    args.ParentLabel = FindParentLabelByPosition(ref labels, codes, labels[args.LabelIndex].references[i].CodeReflect);
                     if (!Reassemble(codes,ref labels,ref assembleds, ref CurrentAddress, args,ref LastReassemble, ReassembleType.AddressAligned))
                     {
                         goto Failed;
@@ -763,17 +789,15 @@ namespace AutoAssembler
                 {
                     string s = code.Substring(0, code.IndexOf(":")).Trim();
                     Address adrex = LabelParse(s, ref labels, CurrentAddress);
-                    int index = FindLabelIndex(adrex.Label, ref labels);
-                    if (index == -1)
+                    if(adrex.address != 0)
                     {
-                        ErrorState = "InvalidCode";
-                        ErrorInfo = "Reassemble code failed!Error code:\r\n" + code;
-                        goto Failed;
+                        CurrentAddress = adrex.address;
                     }
-                    if(labels[index].ParentLabel == null)
+                    else
                     {
-                        CurrentAddress = labels[index].Address;
-                        continue;
+                        ErrorState = "InvalidLabel";
+                        ErrorInfo = "Undefined Label!Code:" + code;
+                        goto Failed;
                     }
                 }
                 else
@@ -807,7 +831,7 @@ namespace AutoAssembler
             //先校正标签
             for (i = 0; i < loop; ++i)
             {
-                if (labels[i].PositionInCodes > labels[args.LabelIndex].references[args.ReferenceIndex].CodeReflect && labels[i].VirtualLabel == false && labels[args.LabelIndex].ParentLabel == labels[i].ParentLabel)
+                if (labels[i].ParentLabel == args.ParentLabel && labels[i].PositionInCodes > labels[args.LabelIndex].references[args.ReferenceIndex].CodeReflect)
                 {
                     label = labels[i];
                     label.Address += args.diff;
@@ -1436,19 +1460,16 @@ namespace AutoAssembler
                         catch (FormatException)
                         {//不是数字和模块,应为未定义标签
                             CurrentAddress = reserved;
-                            if (numbers.Length > 1)
-                            {
-                                address.Label = numbers[i].Value;
-                                address.isVirtualLabel = true;
-                                address.Multiple = true;
-                                return address;
-                            }
+                            address.Label = numbers[i].Value;
+                            address.isVirtualLabel = true;
+                            address.Multiple = true;
+                            return address;
                         }
                     }
-                    else
-                    {
-                        address.Label = numbers[i].Value;
-                    }
+                }
+                else
+                {
+                    address.Label = numbers[i].Value;
                 }
                 switch (numbers[i].Type)
                 {
