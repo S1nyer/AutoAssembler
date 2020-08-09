@@ -10,6 +10,7 @@ A C# Class library like CE's AutoAssembler<br>
 ## 更新内容:2020.8.8
 * 1.修复了重汇编函数在校正地址时,会错误地调整其它代码块地址的bug.
 * 2.修复了在 LastReassemble 过程中,自动汇编引擎无法识别 `Label+Offset:` 格式的错误.
+* 3.修复了关于内存分配的一个错误
 ## 下面是注意事项:
 * Define命令要这样用`#Define original replace`,注意中间有空格!示范:
 ```assembly

@@ -389,7 +389,7 @@ namespace AutoAssembler
                             goto failed;
                         }
                         alloc.Zero = false;
-                        alloc.Address = Memory.FindNearFreeBlock(NearAddress,alloc.size);
+                        alloc.Address = Memory.AllocMemory(Memory.FindNearFreeBlock(NearAddress,alloc.size),alloc.size);
                     }
                     if(Instr_args.Length == 2)
                     {
@@ -620,20 +620,7 @@ namespace AutoAssembler
             //将分散的汇编指令以区块为标准合并
             Assembled[] assembledArray = assembleds.ToArray();
             assembledArray = MergeAssembles(assembledArray);
-            //开始分配内存
             for (i = 0;i < allocs.Count; ++i)
-            {
-                if (allocs[i].Zero == true)
-                {
-                    continue;
-                }
-                if (Memory.AllocMemory(allocs[i].Address, allocs[i].size) == 0)
-                {
-                    ErrorInfo = "Alloc memory " + allocs[i].AllocName + " failed!Near Address:"+allocs[i].Address.ToString("x");
-                    ErrorState = "MemoryAllocFailed";
-                    goto failed;
-                }
-            }
             //开始执行写入内存操作
             for(i = 0;i < assembledArray.Length; ++i)
             {
@@ -681,10 +668,7 @@ namespace AutoAssembler
             //释放分配的内存
             for (i = 0; i < allocs.Count; ++i)
             {
-                if (allocs[i].Zero)
-                {
-                    FreeAllocMemory(allocs[i].AllocName,allocs);
-                }
+                FreeAllocMemory(allocs[i].AllocName,allocs);
             }
             return false;
         }
