@@ -96,6 +96,13 @@ namespace AutoAssembler
         private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, ref MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
         [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
         private static extern long VirtualAllocEx(IntPtr process, long pAddress, int size, int AllocType, int protect);
+        [DllImport("user32.dll", EntryPoint = "SendMessageA")]
+        private static extern int SendMessage(
+        IntPtr hWnd,   // handle to destination window
+        int Msg,    // message
+        uint wParam, // first message parameter
+        uint lParam // second message parameter
+        );
         public enum OperationType
         {
             Add = 0,
@@ -175,6 +182,10 @@ namespace AutoAssembler
                 }
             }
             return index;
+        }
+        public void PressKey(char key)
+        {
+            SendMessage(ProcessHandle, 0x102, key, 0);
         }
         public IntPtr CreateThread(long address)
         {
@@ -386,7 +397,6 @@ namespace AutoAssembler
             i = j = 0;
             int BufferLen, CodeLen;
             int Offest;
-            long index = 0;
             CodeLen = CodeArray.Length;
             //定义模块信息及有关变量
             long BeginAddress, EndAddress,CurrentAddress;
@@ -412,7 +422,7 @@ namespace AutoAssembler
                         ++i;
                         ++j;
                         if (j == CodeLen)
-                            return CurrentAddress + (index + i - CodeLen);
+                            return CurrentAddress + (i - CodeLen);
                         continue;
                     }
                     Offest = i + CodeLen;

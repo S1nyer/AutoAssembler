@@ -620,7 +620,6 @@ namespace AutoAssembler
             //将分散的汇编指令以区块为标准合并
             Assembled[] assembledArray = assembleds.ToArray();
             assembledArray = MergeAssembles(assembledArray);
-            for (i = 0;i < allocs.Count; ++i)
             //开始执行写入内存操作
             for(i = 0;i < assembledArray.Length; ++i)
             {
@@ -1128,6 +1127,13 @@ namespace AutoAssembler
                 }
                 if (SplitExps.Length == 1)
                 {
+                    if(Expression.IndexOf(']') != -1)
+                    {
+                        if (!Memory.ReadMemoryInt64(Address, ref Address))
+                        {
+                            return 0;
+                        }
+                    }
                     return Address;
                 }
                 if (Memory.is64bit)
