@@ -1,15 +1,18 @@
-﻿using System;
+﻿using System.Windows.Forms;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-
+using System.Threading;
 
 namespace AutoAssembler
 {
     public class MemoryAPI
     {
         public IntPtr ProcessHandle;
+        public int PID;
+        public IntPtr WindowHandle;
         public bool is64bit;
         public bool ok;
         public ProcessModuleCollection ProcessModuleInfo;
@@ -18,8 +21,10 @@ namespace AutoAssembler
             ok = true;
             ProcessHandle = getHandleByProcessName(ProcessName);
             try
-            {
+            {                
                 Process process = Process.GetProcessesByName(ProcessName)[0];
+                PID = process.Id;
+                WindowHandle = process.MainWindowHandle;
                 ProcessModuleInfo = process.Modules;
                 IsWow64Process(process.SafeHandle, out is64bit);
                 is64bit = !is64bit;
@@ -34,7 +39,18 @@ namespace AutoAssembler
                 ok = false;
             }
         }
-        
+        public enum ScanKey
+        {
+            NO = 0,
+            ESC = 1,
+            NUM1 = 2,NUM2 =3, NUM3 = 4,NUM4 = 5, NUM5 = 6, NUM6 = 7, NUM7 = 8, NUM8 = 9, NUM9 = 10, NUM0 = 11,
+            Tab = 15,
+            Q = 16,W = 17,E = 18,R = 19,T = 20,Y = 21,U = 22,I = 23,O = 24,P = 25,
+            CTRL = 29,A = 30,S=31,D=32,F=33,G=34,H=35,J=36,K=37,L=38,
+            SHIFT_L = 42,Z=44,X=45,C=46,V=47,B=48,N=49,M=50,
+            SHIFT_R = 54,ALT = 56,SPACE = 57,
+            F1 = 59,F2=60,F3=61,F4 =62,F5=63,F6=64,F7=65,F8=66,F9=67,F10=68,
+        }
         public struct MEMORY_BASIC_INFORMATION
         {
             public long BaseAddress;
@@ -76,6 +92,7 @@ namespace AutoAssembler
         const int MEM_WRITE_WATCH = 0x200000;
         const int MEM_PHYSICAL = 0x400000;
         const int MEM_LARGE_PAGES = 0x20000000;
+        #region DllImports
         [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.Winapi)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool IsWow64Process([In] Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid processHandle,
@@ -96,13 +113,41 @@ namespace AutoAssembler
         private static extern int VirtualQueryEx(IntPtr handle, long QueryAddress, ref MEMORY_BASIC_INFORMATION lpBuffer, int dwLength);
         [DllImport("kernel32.dll", EntryPoint = "VirtualAllocEx")]
         private static extern long VirtualAllocEx(IntPtr process, long pAddress, int size, int AllocType, int protect);
-        [DllImport("user32.dll", EntryPoint = "SendMessageA")]
-        private static extern int SendMessage(
-        IntPtr hWnd,   // handle to destination window
-        int Msg,    // message
-        uint wParam, // first message parameter
-        uint lParam // second message parameter
-        );
+        [StructLayout(LayoutKind.Sequential)]
+        public class KeyBoardHookStruct
+        {
+            public int vkCode;
+            public int scanCode;
+            public int flags;
+            public int time;
+            public int dwExtraInfo;
+        }
+        public delegate int HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+        //设置钩子
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        public static extern int SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hInstance, int threadId);
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        //抽掉钩子
+        public static extern bool UnhookWindowsHookEx(int idHook);
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        //调用下一个钩子
+        public static extern int CallNextHookEx(int idHook, int nCode, IntPtr wParam, IntPtr lParam);
+        //取得模块句柄 
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        //寻找目标进程窗口
+        [DllImport("USER32.DLL")]
+        public static extern IntPtr FindWindow(string lpClassName,
+            string lpWindowName);
+        //设置进程窗口到最前 
+        [DllImport("USER32.DLL")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+        //模拟键盘事件 
+        [DllImport("User32.dll")]
+        public static extern void keybd_event(Byte bVk, Byte bScan, Int32 dwFlags, Int32 dwExtraInfo);
+        #endregion
+        public const int KEYEVENTF_KEYUP = 2;
         public enum OperationType
         {
             Add = 0,
@@ -183,9 +228,11 @@ namespace AutoAssembler
             }
             return index;
         }
-        public void PressKey(char key)
+        public static void PressKey(Keys key,ScanKey scankey,int delay)
         {
-            SendMessage(ProcessHandle, 0x102, key, 0);
+            keybd_event((byte)key, (byte)scankey, 0, 0);
+            Thread.Sleep(delay);
+            keybd_event((byte)key,(byte)scankey, KEYEVENTF_KEYUP, 0);
         }
         public IntPtr CreateThread(long address)
         {
@@ -502,6 +549,7 @@ namespace AutoAssembler
                 buffer = Bytes[0];
                 return true;
             }
+            buffer = 0;
             return false;
         }
         public bool ReadMemoryInt16(long address, ref short buffer)
@@ -512,6 +560,7 @@ namespace AutoAssembler
                 buffer = BitConverter.ToInt16(bytes, 0);
                 return true;
             }
+            buffer = 0;
             return false;
         }
         public bool ReadMemoryInt32(long address,ref int buffer)
@@ -522,6 +571,7 @@ namespace AutoAssembler
                 buffer = BitConverter.ToInt32(bytes, 0);
                 return true;
             }
+            buffer = 0;
             return false;
         }
         public bool ReadMemoryInt64(long address,ref long buffer)
@@ -532,6 +582,7 @@ namespace AutoAssembler
                 buffer = BitConverter.ToInt64(bytes, 0);
                 return true;
             }
+            buffer = 0;
             return false;
         }
         public bool ReadMemoryFloat(long address,ref float buffer)
@@ -542,6 +593,7 @@ namespace AutoAssembler
                 buffer = BitConverter.ToSingle(bytes, 0);
                 return true;
             }
+            buffer = 0;
             return false;
         }
         public bool ReadMemoryDouble(long address,ref double buffer)
@@ -552,6 +604,7 @@ namespace AutoAssembler
                 buffer = BitConverter.ToDouble(bytes, 0);
                 return true;
             }
+            buffer = 0;
             return false;
         }
         /// <summary> 

@@ -32,6 +32,21 @@ namespace AutoAssembler
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
         }
+        public bool Close()
+        {
+            bool ExitSafely = true;
+            for(int i = 0;i < Scripts.Count; i++)
+            {
+                if(GetScriptStatus(Scripts[i].Name) == Script.Status.Enabled)
+                {
+                    if (RunScript(Scripts[i].Name) == false)
+                    {
+                        ExitSafely = false;
+                    }  
+                }
+            }
+            return ExitSafely;
+        }
         public List<RegisterSymbol> RegisteredSymbols;
         public List<Script> Scripts;
         public List<AllocedMemory> TempScriptAlloceds;
