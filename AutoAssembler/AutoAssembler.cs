@@ -32,20 +32,22 @@ namespace AutoAssembler
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
         }
-        public bool Close()
+        public string[] Close()
         {
-            bool ExitSafely = true;
+            List<string> UnClosedScripts = new List<string>();
             for(int i = 0;i < Scripts.Count; i++)
             {
                 if(GetScriptStatus(Scripts[i].Name) == Script.Status.Enabled)
                 {
                     if (RunScript(Scripts[i].Name) == false)
                     {
-                        ExitSafely = false;
+                        UnClosedScripts.Add(Scripts[i].Name);
                     }  
                 }
             }
-            return ExitSafely;
+            if (UnClosedScripts.Count == 0)
+                return null;
+            return UnClosedScripts.ToArray();
         }
         public List<RegisterSymbol> RegisteredSymbols;
         public List<Script> Scripts;
@@ -632,11 +634,27 @@ namespace AutoAssembler
                 if (!Reassemble(Codes,ref labels,ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LastReassemble))
                     goto failed;
             }
+            //执行释放内存操作
+            List<AllocedMemory> tempAllocs = new List<AllocedMemory>();
+            for (i = 0; i < alloceds.Count; i++)
+                tempAllocs.Add(alloceds[i]);
+            for (i = 0; i < allocs.Count; i++)
+                tempAllocs.Add(allocs[i]);
+            for (i = 0; i < Deallocs.Count; ++i)
+            {
+                s = Deallocs[i];
+                if (!FreeAllocMemory(s, tempAllocs))
+                {
+                    ErrorState = "FreeMemoryError";
+                    ErrorInfo = "Free memory " + s + " error!";
+                    goto failed;
+                }
+            }
             //将分散的汇编指令以区块为标准合并
             Assembled[] assembledArray = assembleds.ToArray();
             assembledArray = MergeAssembles(assembledArray);
             //开始执行写入内存操作
-            for(i = 0;i < assembledArray.Length; ++i)
+            for (i = 0;i < assembledArray.Length; ++i)
             {
                 if (!Memory.WriteMemoryByteSet(assembledArray[i].CurrentAddress, assembledArray[i].AssembledBytes))
                 {
@@ -644,22 +662,6 @@ namespace AutoAssembler
                     ErrorState = "WriteMemoryError";
                     goto failed;
                 } 
-            }
-            //执行释放内存操作
-            List<AllocedMemory> tempAllocs = new List<AllocedMemory>();
-            for (i = 0; i < alloceds.Count; i++)
-                tempAllocs.Add(alloceds[i]);
-            for (i = 0; i < allocs.Count; i++)
-                tempAllocs.Add(allocs[i]);
-            for(i = 0; i < Deallocs.Count;++i)
-            {
-                s = Deallocs[i];
-                if (!FreeAllocMemory(s,tempAllocs))
-                {
-                    ErrorState = "FreeMemoryError";
-                    ErrorInfo = "Free memory " + s + " error!";
-                    goto failed;
-                }
             }
             //执行创建线程操作
             bool ok = true;
