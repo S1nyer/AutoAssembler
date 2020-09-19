@@ -32,6 +32,42 @@ namespace AutoAssembler
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
         }
+        /// <summary>
+        /// 重新初始化自动汇编引擎,包括使所有脚本回到初始状态(使所有脚本处于未启用状态，并为所有脚本分配一个全新alloceds成员),清除全局符号列表，清除匿名脚本内存分配堆.(但它不会撤销对之前附加的程序进行的任意更改)
+        /// </summary>
+        public void ResetEngine(string ProcessName)
+        {
+            OK = true;
+            Memory = new MemoryAPI(ProcessName);
+            RegisteredSymbols = new List<RegisterSymbol>();
+            TempScriptAlloceds = new List<AllocedMemory>();
+            if (!Memory.ok)
+            {
+                OK = false;
+                ErrorState = "OpenProcessFailed";
+                ErrorInfo = "Open process " + ProcessName + " failed!";
+                return;
+            }
+            for(int i = 0; i < Scripts.Count; i++)
+            {
+                if(Scripts[i].GetStatus == Script.Status.Enabled)
+                {
+                    Scripts[i].Enable = !Scripts[i].Enable;
+                    Scripts[i].alloceds = new List<AllocedMemory>();
+                }
+            }
+            GC.Collect(200,GCCollectionMode.Optimized);
+        }
+        public bool ProcessIsAlive()
+        {
+            long address = Memory.AllocMemory(0, 0x1000);
+            if (address == 0)
+            {
+                return false;
+            }
+            MemoryAPI.VirtualFreeEx(Memory.ProcessHandle, address, 0x1000, MEM_DECOMMIT);
+            return true;
+        }
         public string[] Close()
         {
             List<string> UnClosedScripts = new List<string>();
@@ -55,7 +91,7 @@ namespace AutoAssembler
         public string ErrorInfo;
         public string ErrorState;
         public bool OK;
-        private readonly MemoryAPI Memory;
+        private MemoryAPI Memory;
         public enum Assembler_Status
         {
             //XED汇编引擎状态

@@ -432,7 +432,7 @@ namespace AutoAssembler
             }
             return Address;
         }
-        public long AobScanModule(string Module,string MarkCode)
+        public long AobScanModule(string Module, string MarkCode)
         {
             if (String.IsNullOrEmpty(MarkCode))
                 return 0;
@@ -441,12 +441,11 @@ namespace AutoAssembler
             //定义Sunday匹配算法所需的变量
             short[] CodeArray = HexStringToIntArray(MarkCode);
             int i, j, k;
-            i = j = 0;
             int BufferLen, CodeLen;
-            int Offest;
+            int Offest = 0;
             CodeLen = CodeArray.Length;
             //定义模块信息及有关变量
-            long BeginAddress, EndAddress,CurrentAddress;
+            long BeginAddress, EndAddress, CurrentAddress;
             byte[] Buffer;
             BeginAddress = ModuleParse(Module);
             if (BeginAddress == 0)
@@ -454,7 +453,7 @@ namespace AutoAssembler
             EndAddress = GetModuleBaseaddress(Module) + GetModuleSize(Module);
             CurrentAddress = BeginAddress;
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
-            while(CurrentAddress < EndAddress)
+            while (CurrentAddress < EndAddress)
             {
                 if (VirtualQueryEx(ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
                     return 0;
@@ -462,28 +461,24 @@ namespace AutoAssembler
                 if (!ReadMemoryByteSet(ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
                     return 0;
                 BufferLen = Buffer.Length;
-                while(i < BufferLen && j < CodeLen)
+                i = j = 0;
+                while (i < BufferLen)
                 {
-                    if(Buffer[i] == CodeArray[j] || CodeArray[j] == 256)
+                    if (Buffer[i] == CodeArray[j] || CodeArray[j] == 256)
                     {
-                        ++i;
-                        ++j;
+                        ++i; ++j;
                         if (j == CodeLen)
                             return CurrentAddress + (i - CodeLen);
                         continue;
                     }
                     Offest = i + CodeLen;
                     if (Offest >= mbi.RegionSize)
-                    {
-                        CurrentAddress += mbi.RegionSize;
-                        j = 0;
                         break;
-                    }
-                    for (k = CodeLen - 1; k >= 0 && Buffer[Offest] != CodeArray[k]; --k) ;
-                    i = i + (CodeLen - k);
+                    for (k = CodeLen - 1; k >= 0 && Buffer[Offest] != CodeArray[k]; k--) ;
+                    i += (CodeLen - k);
                     j = 0;
                 }
-                i = 0;
+                CurrentAddress += mbi.RegionSize;
             }
             return 0;
         }
