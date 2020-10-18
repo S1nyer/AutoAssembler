@@ -7,10 +7,11 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define(这个指令和CE规定的用法不同,详细见下面的注意事项)<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.8.8
-* 1.修复了重汇编函数在校正地址时,会错误地调整其它代码块地址的bug.
-* 2.修复了在 LastReassemble 过程中,自动汇编引擎无法识别 `Label+Offset:` 格式的错误.
-* 3.修复了关于内存分配的一个错误
+## 更新内容:2020.10.18
+* 1.添加了新指令AOBScan
+	* 指令格式: `AOBScan(SymbolName,AOBString)` 支持通配符 `??` 或 `**`,不支持半字节通配.
+* 2.添加了新函数 ResetEngine,调用后自动汇编引擎会将所有脚本设为禁用状态,清除所有分配的全局符号和分配内存.
+* 3.修复了一些bug
 ## 下面是注意事项:
 * Define命令要这样用`#Define original replace`,注意中间有空格!示范:
 ```assembly

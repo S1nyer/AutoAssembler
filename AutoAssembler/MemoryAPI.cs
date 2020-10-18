@@ -1,5 +1,4 @@
-﻿using System.Windows.Forms;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -228,12 +227,6 @@ namespace AutoAssembler
             }
             return index;
         }
-        public static void PressKey(Keys key,ScanKey scankey,int delay)
-        {
-            keybd_event((byte)key, (byte)scankey, 0, 0);
-            Thread.Sleep(delay);
-            keybd_event((byte)key,(byte)scankey, KEYEVENTF_KEYUP, 0);
-        }
         public IntPtr CreateThread(long address)
         {
             int dw = 0;
@@ -432,6 +425,65 @@ namespace AutoAssembler
             }
             return Address;
         }
+        public long AobScan(string MarkCode)
+        {
+            if (String.IsNullOrEmpty(MarkCode))
+                return 0;
+            if (MarkCode.Replace(" ", "").Length % 2 != 0)
+                return 0;
+            short[] CodeArray = HexStringToIntArray(MarkCode);
+            int i, j, k;
+            int BufferLen, CodeLen;
+            int Offest;
+            CodeLen = CodeArray.Length;
+            long BeginAddress, EndAddress, CurrentAddress;
+            byte[] Buffer;
+            if (is64bit)
+            {
+                BeginAddress = x64MinAddress;
+                EndAddress = x64MaxAddress;
+            }
+            else
+            {
+                BeginAddress = x32MinAddress;
+                EndAddress = x32MaxAddress;
+            }
+            CurrentAddress = BeginAddress;
+            MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
+            while (CurrentAddress < EndAddress)
+            {
+                if (VirtualQueryEx(ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
+                    return 0;
+                if (mbi.Protect != PAGE_READWRITE || mbi.State != MEM_COMMIT)
+                {
+                    CurrentAddress += mbi.RegionSize;
+                    continue;
+                }
+                Buffer = new byte[mbi.RegionSize];
+                if (!ReadMemoryByteSet(ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
+                    return 0;
+                BufferLen = Buffer.Length;
+                i = j = 0;
+                while (i < BufferLen)
+                {
+                    if (Buffer[i] == CodeArray[j] || CodeArray[j] == 256)
+                    {
+                        ++i; ++j;
+                        if (j == CodeLen)
+                            return CurrentAddress + (i - CodeLen);
+                        continue;
+                    }
+                    Offest = i + CodeLen;
+                    if (Offest >= mbi.RegionSize)
+                        break;
+                    for (k = CodeLen - 1; k >= 0 && Buffer[Offest] != CodeArray[k]; k--) ;
+                    i += (CodeLen - k);
+                    j = 0;
+                }
+                CurrentAddress += mbi.RegionSize;
+            }
+            return 0;
+        }
         public long AobScanModule(string Module, string MarkCode)
         {
             if (String.IsNullOrEmpty(MarkCode))
@@ -442,7 +494,7 @@ namespace AutoAssembler
             short[] CodeArray = HexStringToIntArray(MarkCode);
             int i, j, k;
             int BufferLen, CodeLen;
-            int Offest = 0;
+            int Offest;
             CodeLen = CodeArray.Length;
             //定义模块信息及有关变量
             long BeginAddress, EndAddress, CurrentAddress;
