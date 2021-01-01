@@ -342,7 +342,7 @@ namespace AutoAssembler
             {
                 Currentline = Codes[i].Trim();
                 InstrPrefix = Currentline.ToUpper();
-                if(Substring(InstrPrefix,0,7) == "AOBSCAN")
+                if(Substring(InstrPrefix,0,8) == "AOBSCAN(")
                 {
                     Instr_args = ArgsParse(Currentline, Sep_comma);
                     TrimArgs(ref Instr_args);
