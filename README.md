@@ -4,23 +4,38 @@ A C# Class library like CE's AutoAssembler<br>
 * 此自动汇编引擎使用的汇编指令解析器是x64dbg的[XEDParse](https://github.com/x64dbg/XEDParse).<br>
 `感谢这些优秀的开发者们,如有侵权请联系删除!`<br>
 * 目前此自动汇编引擎支持的脚本命令有
-  * AOBscanmodule,Alloc,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define(这个指令和CE规定的用法不同,详细见下面的注意事项)<br>
+  * AOBScan,AOBscanmodule,Alloc,Assert,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.8.8
-* 1.修复了重汇编函数在校正地址时,会错误地调整其它代码块地址的bug.
-* 2.修复了在 LastReassemble 过程中,自动汇编引擎无法识别 `Label+Offset:` 格式的错误.
-* 3.修复了关于内存分配的一个错误
+## 更新内容:2020.1.1
+* 新的内存管理机制
+	* 在 MemoryAPI 类中引入了一个类似于堆内存管理的的机制:<br>当请求分配内存时,会与当前堆列表进行匹配,如果存在一个堆满足条件,会将内存分配到此堆下.若不存在一个堆满足此条件,自动汇编引擎将会创建一个新的堆来满足条件并将内存分配到此堆下。
+	* 堆默认有32个内存单元,每个内存单元的大小为 1024字节.
+	* 举个例子:首先脚本A中执行指令`alloc(newmem,1024,gamedll.dll)`,假设堆列表中不存在一个地址距`gamedll.dll`较接近的堆,那么自动汇编引擎会在距`gamedll.dll`较近的空闲内存中创建一个新的堆,然后将`newmem`分配到此堆下.之后脚本B执行指令`alloc(newmem,1024,gamedll.dll)`,堆列表中存在满足条件的堆,所以`newmem`将会被分配到匹配的堆的空闲位置.<br>显然,这将更利于内存的充分利用以及提高脚本的执行速度.
+	* 如果无特殊情况,建议分配的内存大小不要超过1024个字节.因为这样分配的速度更快,对堆的负荷也更小,而且通常来说注入的代码不会超过1024个字节.
+* 新增指令 [aobscan](https://wiki.cheatengine.org/index.php?title=Auto_Assembler:aobScan),支持通配符 `??` `**` `*`,不支持半字节通配,仅扫描可读写的内存.
+* 新增指令 [assert](https://wiki.cheatengine.org/index.php?title=Auto_Assembler:assert),支持通配符 `??` `**` `*`.
+* 扩展了定义数据伪指令,现在支持`db`、`dw`、`dd`、`dq`指令,它们分别是定义字节、字、双字、四字数据.定义的数据用逗号或空格隔开,支持定义字符串.注意,定义字节数据时,字符串采用ASCII编码；定义字数据时,字符串采用Unicode编码.以下是指令示范(16进制):
+	* db 44 39 79 08 0F 84 C3 03 00 00 字节数组:44 39 79 08 0F 84 C3 03 00 00
+	* db 44,39,79,08,0F,84,C3,03,00,00 字节数组:44 39 79 08 0F 84 C3 03 00 00
+	* 字符串声明可以是`""`也可以是`''`,支持转义符`\`,`\t`水平定位符号,`\r\n`一般连用,表示回车换行.使用指令dd dq时无法定义字符串.
+	* db "Hello World!",0 字节数组:48 65 6C 6C 6F 20 57 6F 72 6C 64 21 00
+	* dw '你好 世界!',0 字节数组:60 4F 7D 59 20 00 16 4E 4C 75 21 00 00 00
+	* 假如字符串中要用到'号或"号请使用转义符`\"` `\'`,否则会出现错误
+	* dw "这是\"转义符\"!",0 字节数组:D9 8F 2F 66 22 00 6C 8F 49 4E 26 7B 22 00 21 00 00 00
+	* 逗号和空格可以混合使用,但不推荐这样
+	* db 44,39 79 08,0F 84 C3,03 00 00 字节数组:44 39 79 08 0F 84 C3 03 00 00
+	* db "Hello World!" 0 字节数组:48 65 6C 6C 6F 20 57 6F 72 6C 64 21 00
+* 汇编代码支持直接写浮点数,自动汇编引擎会将浮点数转成字节码.在浮点数结尾中添加`f`结尾表示单精度浮点数,否则默认为双精度浮点数(数字注意要添加小数点,否则会被视为16进制数处理).此外,类似于`(float)100`和`(double)100`这样的指令已不支持!
+	* 例如:`mov rax,100.0f` -> `mov rax,42C80000`,字节码:`48 C7 C0 00 00 C8 42`
+	* `mov rax,100.0` -> `mov rax,4059000000000000`,字节码:`48 B8 00 00 00 00 00 00 59 40`.注意不要忘记小数位`.0`!
+* 修正`Define`指令的格式.与CE的语法一致.
 ## 下面是注意事项:
-* Define命令要这样用`#Define original replace`,注意中间有空格!示范:
-```assembly
-	#Define FullHealth (float)100.0
-	......
-	mov rax,FullHealth
-```
-* XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,这些需要你们自己去发现.<br>
-* `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
+* XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,不一一列举了.<br>
+* `cmp [rcx] ,0`这句汇编代码将无法被XEDParse解析,它会提示:`Ambiguous memory size`(模糊的操作数大小),因为您没有指定对`[rcx]`的操作大小,所以应该在`[rcx]`前加上操作数大小 `byte/word/dword/qword ptr`,如:`cmp dword ptr [rcx]`.为什么CE支持`cmp [rcx],0`这样的语法?因为ce对没用限定操作数大小的内存操作默认会编译成 `cmp dword ptr [address],0`.
+* `AOBscanmodule(SymbolName,ModuleName,AOBString)`中参数`AOBString`的通配符可以是`??`或`**`和`*`,但不支持半字节通配。例如:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF F* FF FF 00 00)`或`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?f FF FF 00 00)`是不支持的!
 	* 正确的示范:`AOBscanmodule(SymbolName,ModuleName,48 B9 FF FF FF ?? FF FF 00 00)`
+* `Assert`指令也支持通配符`??`或`**`和`*`,但不支持半字节通配。(￣.￣)
 * 自动汇编脚本中的涉及到的符号,包括脚本名称、全局符号、分配的内存、标签全部区分大小写!<br>
 * 当全局内存符号(RegisteredSymbols)出现重复时,自动汇编引擎并不会提示冲突,而是全局内存符号的值覆盖成新申请的值.<br>
 * 获取地址优先级:全局符号 > 模块 > 静态地址<br>

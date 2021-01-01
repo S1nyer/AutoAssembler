@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Text;
 
 namespace AutoAssembler
 {
@@ -60,7 +61,7 @@ namespace AutoAssembler
         }
         public bool ProcessIsAlive()
         {
-            long address = Memory.AllocMemory(0, 0x1000);
+            long address = Memory.VirtualAlloc(0, 0x1000);
             if (address == 0)
             {
                 return false;
@@ -81,6 +82,7 @@ namespace AutoAssembler
                     }  
                 }
             }
+            Memory.Close();
             if (UnClosedScripts.Count == 0)
                 return null;
             return UnClosedScripts.ToArray();
@@ -92,6 +94,7 @@ namespace AutoAssembler
         public string ErrorState;
         public bool OK;
         private MemoryAPI Memory;
+        private byte[] DataBuf = new byte[1024];
         public enum Assembler_Status
         {
             //XED汇编引擎状态
@@ -125,6 +128,11 @@ namespace AutoAssembler
             public string Original;
             public string Replace;
         }
+        public struct Assert
+        {
+            public string Address;
+            public short[] ByteCodes;
+        }
         public struct Assembled
         {
             public byte[] AssembledBytes;
@@ -156,9 +164,10 @@ namespace AutoAssembler
         public struct AllocedMemory
         {
             public string AllocName;
+            public int RefHeap;
+            public int MemNumber;
             public long Address;
-            public int size;
-            public bool Zero;
+            public int Size;
         }
         public struct RegisterSymbol
         {
@@ -326,13 +335,40 @@ namespace AutoAssembler
                 label.VirtualLabel = false;
                 labels.Add(label);
             }
-            //首先处理AOBScanModule命令和Define命令
+            //首先处理特征码扫描命令和Define命令
             char[] Sep_comma = { ',' };
             char[] Sep_space = { ' ' };
             for (i = 0; i < TotalLine; i++)
             {
                 Currentline = Codes[i].Trim();
                 InstrPrefix = Currentline.ToUpper();
+                if(Substring(InstrPrefix,0,7) == "AOBSCAN")
+                {
+                    Instr_args = ArgsParse(Currentline, Sep_comma);
+                    TrimArgs(ref Instr_args);
+                    if(Instr_args.Length != 2)
+                    {
+                        ErrorInfo = ("AobScan parameters Error!Line number:" + i.ToString() + ",Code:" + Codes[i]);
+                        ErrorState = "ParametersError";
+                        return false;
+                    }
+                    if (LabelExist(Instr_args[0], ref labels))
+                    {
+                        ErrorState = "LabelAlreadyExist";
+                        ErrorInfo = ("Symbol: " + Instr_args[0] + " already exist!");
+                        return false;
+                    }
+                    scan_Args = new AobScan_args()
+                    {
+                        LabelName = Instr_args[0],
+                        Module = null,
+                        AobString = Instr_args[1],
+                        OriginCode = Currentline
+                    };
+                    AobScans.Add(scan_Args);
+                    Codes[i] = "";
+                    continue;
+                }
                 if (Substring(InstrPrefix, 0, 14) == "AOBSCANMODULE(")
                 {
                     Instr_args = ArgsParse(Currentline, Sep_comma);
@@ -361,10 +397,10 @@ namespace AutoAssembler
                     Codes[i] = "";
                     continue;
                 }
-                if (Substring(InstrPrefix, 0, 7) == "#DEFINE")
+                if (Substring(InstrPrefix, 0, 7) == "DEFINE(")
                 {
-                    s = Substring(Currentline, 8, Currentline.Length - 8);
-                    Instr_args = s.Split(Sep_space);
+                    s = Substring(Currentline, 8, Currentline.Length - 9);
+                    Instr_args = s.Split(Sep_comma);
                     if(Instr_args.Length < 2 || Instr_args.Length > 2)
                     {
                         ErrorState = "InvalidCode";
@@ -388,7 +424,7 @@ namespace AutoAssembler
                 }
             }
             //进行特征码扫描
-            if(!AobScanModules(AobScans.ToArray(), ref labels))
+            if(!this.AobScans(AobScans.ToArray(), ref labels))
             {
                 goto failed;
             }
@@ -423,10 +459,9 @@ namespace AutoAssembler
                             ErrorInfo = "Symbol: " + Instr_args[0] + " already alloc!";
                             goto failed;
                         }
-                        alloc.AllocName = Instr_args[0];
                         try
                         {
-                            alloc.size = StrToInt_10(Instr_args[1]);
+                            alloc.Size = StrToInt_10(Instr_args[1]);
                         }
                         catch(FormatException)
                         {
@@ -441,8 +476,7 @@ namespace AutoAssembler
                             ErrorState = "UnknownModule";
                             goto failed;
                         }
-                        alloc.Zero = false;
-                        alloc.Address = Memory.AllocMemory(Memory.FindNearFreeBlock(NearAddress,alloc.size),alloc.size);
+                        Memory.AllocMemory(Instr_args[0], NearAddress, alloc.Size,out alloc);
                     }
                     if(Instr_args.Length == 2)
                     {
@@ -452,9 +486,7 @@ namespace AutoAssembler
                             ErrorState = "AllocAlreadyExist";
                             goto failed ;
                         }
-                        alloc.AllocName = Instr_args[0];
-                        alloc.Address = Memory.AllocMemory(0, StrToInt_10(Instr_args[1]));
-                        alloc.Zero = true;
+                        Memory.AllocMemory(Instr_args[0], 0, StrToInt_10(Instr_args[1]), out alloc);
                         goto end;
                     }
                     if(Instr_args.Length < 2)
@@ -482,6 +514,38 @@ namespace AutoAssembler
                     size = Currentline.Length - seek - 1;
                     s = Currentline.Substring(seek, size).Trim();
                     Deallocs.Add(s);//将其加入到Deallocs数组,在最后处理
+                    continue;
+                }
+                if(Substring(InstrPrefix,0,7) == "ASSERT(")
+                {
+                    Instr_args = Instr_args = ArgsParse(Currentline, Sep_comma);
+                    TrimArgs(ref Instr_args);
+                    if (Instr_args.Length < 2 || Instr_args.Length > 2)
+                    {
+                        ErrorState = "InvalidCode";
+                        ErrorInfo = "Syntax error: " + InstrPrefix + " !";
+                        return false;
+                    }
+                    long CmpAddress = LabelParse(Instr_args[0], ref labels,0).address;
+                    if(CmpAddress == 0)
+                    {
+                        ErrorInfo = string.Format("Cannot find symbol:{0}!Error code:\r\n{1}", Instr_args[0], Currentline);
+                        goto failed;
+                    }
+                    short[] ByteCodes = Memory.HexStringToIntArray(Instr_args[1]);
+                    byte[] ByteBuffer = Memory.ReadMemoryByteSet(CmpAddress, ByteCodes.Length);
+                    for(int k = 0; k < ByteCodes.Length; k++)
+                    {
+                        if(ByteCodes[k] == ByteBuffer[k] || ByteCodes[k] == 256)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            ErrorInfo = string.Format("Assert-break occurred!Address:{0:X},code:\r\n{1}", CmpAddress, Currentline);
+                            goto failed;
+                        }
+                    }
                     continue;
                 }
                 if (Substring(InstrPrefix, 0, 6) == "LABEL(")
@@ -605,8 +669,6 @@ namespace AutoAssembler
                     status = ICompile(ref AsmData);
                     if (status == Assembler_Status.Assembler_Error)
                     {
-                        ErrorInfo = ("Unknown Asm instruction: " + Codes[i] + ",Error info:" + AsmData.error);
-                        ErrorState = "UnknownAsmInstruction";
                         goto failed;
                     }
                     assembled.CurrentAddress = CurrentAddress;
@@ -679,12 +741,18 @@ namespace AutoAssembler
             for (i = 0; i < Deallocs.Count; ++i)
             {
                 s = Deallocs[i];
-                if (!FreeAllocMemory(s, tempAllocs))
+                int index = 0;
+                foreach(AllocedMemory temp in tempAllocs)
                 {
-                    ErrorState = "FreeMemoryError";
-                    ErrorInfo = "Free memory " + s + " error!";
-                    goto failed;
+                    if(temp.AllocName == s)
+                    {
+                        Memory.FreeMemory(tempAllocs[index]);
+                        tempAllocs.RemoveAt(index);
+                        break;
+                    }
+                    index++;
                 }
+                continue;
             }
             //将分散的汇编指令以区块为标准合并
             Assembled[] assembledArray = assembleds.ToArray();
@@ -720,7 +788,7 @@ namespace AutoAssembler
             //释放分配的内存
             for (i = 0; i < allocs.Count; ++i)
             {
-                FreeAllocMemory(allocs[i].AllocName,allocs);
+                Memory.FreeMemory(allocs[i]);
             }
             return false;
         }
@@ -952,70 +1020,274 @@ namespace AutoAssembler
             public string Asm;//汇编指令
             public string error;//错误字符
         }
+        private enum DataType
+        {
+            Byte,
+            Word,
+            Dword,
+            Qword
+        }
+        private byte[] DataParse(string DataValue,DataType type)
+        {
+            int Pre, Cur, DataIndex;
+            string Instr = DataValue;
+            DataValue = DataValue.Substring(3, DataValue.Length - 3);
+            var ConvertedVar = 0L;
+            byte[] Tempbuf,RetVar;
+            Pre = Cur = 0;
+            DataIndex = 0;
+            while(Cur < DataValue.Length)
+            {
+                switch (DataValue[Cur])
+                {
+                    case ' ':
+                    case ',':
+                        if (Cur - Pre == 0)
+                        {
+                            Pre = Cur;
+                            continue;
+                        }
+                        else
+                        {
+                            try
+                            {
+                                switch (type)
+                                {
+                                    case DataType.Byte:
+                                        ConvertedVar = Convert.ToByte(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        DataBuf[DataIndex] = (byte)ConvertedVar;
+                                        DataIndex++;
+                                        break;
+                                    case DataType.Word:
+                                        ConvertedVar = Convert.ToInt16(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        Tempbuf = BitConverter.GetBytes((Int16)ConvertedVar);
+                                        DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1];
+                                        DataIndex += 2;
+                                        break;
+                                    case DataType.Dword:
+                                        ConvertedVar = Convert.ToInt32(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        Tempbuf = BitConverter.GetBytes((Int32)ConvertedVar);
+                                        DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
+                                        DataIndex += 4;
+                                        break;
+                                    case DataType.Qword:
+                                        ConvertedVar = Convert.ToInt64(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        Tempbuf = BitConverter.GetBytes((Int64)ConvertedVar);
+                                        DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
+                                        break;
+                                }
+                                Pre = Cur + 1;
+                                Cur++;
+                                continue;
+                            }
+                            catch (FormatException)
+                            {
+                                ErrorState = "NumberFormatException";
+                                ErrorInfo = string.Format("Invalid number:{0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
+                                return null;
+                            }
+                            catch (OverflowException)
+                            {
+                                ErrorState = "NumberOverflow";
+                                ErrorInfo = string.Format("Number overflow: {0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
+                                return null;
+                            }
+                        }
+                    case '\'':
+                    case '"':
+                        bool ended = false;
+                        Cur++;
+                        StringBuilder builder = new StringBuilder();
+                        while(Cur < DataValue.Length)
+                        {
+                            if (ended)
+                                break;
+                            switch (DataValue[Cur])
+                            {
+                                case '\''://字串结尾
+                                case '"':
+                                    switch (type)
+                                    {
+                                        case DataType.Byte:
+                                            Tempbuf = Encoding.ASCII.GetBytes(builder.ToString());
+                                            Array.Copy(Tempbuf, 0, DataBuf, DataIndex, Tempbuf.Length);
+                                            DataIndex += Tempbuf.Length;
+                                            break;
+                                        case DataType.Word:
+                                            Tempbuf = Encoding.Unicode.GetBytes(builder.ToString());
+                                            Array.Copy(Tempbuf, 0, DataBuf, DataIndex, Tempbuf.Length);
+                                            DataIndex += Tempbuf.Length;
+                                            break;
+                                        default:
+                                            ErrorState = "SyntaxError";
+                                            ErrorInfo = string.Format("Define data instruction only support ASCII and Unicode!Please use db or dw to define string!In code:\r\n{0}", Instr);
+                                            return null;
+                                    }
+                                    while(DataValue[Cur] != ' '&& DataValue[Cur] != ',')
+                                    {
+                                        Cur++;
+                                    }
+                                    Cur++;
+                                    Pre = Cur;
+                                    ended = true;
+                                    break;
+                                case '\\'://转义符
+                                    switch (DataValue[Cur + 1])
+                                    {
+                                        case 'T':
+                                        case 't':
+                                            builder.Append('\t');
+                                            break;
+                                        case 'R':
+                                        case 'r':
+                                            builder.Append('\r');
+                                            break;
+                                        case 'N':
+                                        case 'n':
+                                            builder.Append('\n');
+                                            break;
+                                        default:
+                                            builder.Append(DataValue[Cur + 1]);
+                                            break;
+                                    }
+                                    Cur += 2;
+                                    break;
+                                default:
+                                    builder.Append(DataValue[Cur]);
+                                    Cur++;
+                                    continue;
+                            }
+                        }
+                        if (ended)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            ErrorState = "SyntaxError";
+                            ErrorInfo = string.Format("Cannot find String ending sign \" or \'!In code:\r\n{0}", Instr);
+                            return null;
+                        }
+                    default:
+                        Cur++;
+                        continue;
+                }
+            }
+            if(Cur - Pre == 0)
+            {
+                RetVar = new byte[DataIndex];
+                Array.Copy(DataBuf, RetVar, DataIndex);
+                return RetVar;
+            }
+            else
+            {
+                try
+                {
+                    switch (type)
+                    {
+                        case DataType.Byte:
+                            ConvertedVar = Convert.ToByte(DataValue.Substring(Pre, Cur - Pre), 16);
+                            DataBuf[DataIndex] = (byte)ConvertedVar;
+                            DataIndex++;
+                            break;
+                        case DataType.Word:
+                            ConvertedVar = Convert.ToInt16(DataValue.Substring(Pre, Cur - Pre), 16);
+                            Tempbuf = BitConverter.GetBytes((Int16)ConvertedVar);
+                            DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1];
+                            DataIndex += 2;
+                            break;
+                        case DataType.Dword:
+                            ConvertedVar = Convert.ToInt32(DataValue.Substring(Pre, Cur - Pre), 16);
+                            Tempbuf = BitConverter.GetBytes((Int32)ConvertedVar);
+                            DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
+                            DataIndex += 4;
+                            break;
+                        case DataType.Qword:
+                            ConvertedVar = Convert.ToInt64(DataValue.Substring(Pre, Cur - Pre), 16);
+                            Tempbuf = BitConverter.GetBytes((Int64)ConvertedVar);
+                            DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
+                            break;
+                    }
+                }
+                catch (FormatException)
+                {
+                    ErrorState = "NumberFormatException";
+                    ErrorInfo = string.Format("Invalid number:{0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
+                    return null;
+                }
+                catch (OverflowException)
+                {
+                    ErrorState = "NumberOverflow";
+                    ErrorInfo = string.Format("Number overflow: {0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
+                    return null;
+                }
+                RetVar = new byte[DataIndex];
+                Array.Copy(DataBuf, RetVar, DataIndex);
+                return RetVar;
+            }
+        }
         private Assembler_Status ICompile(ref IAssemble assembledata)
         {
             string InstrPrefix = assembledata.Asm.ToUpper();
             string s;
             int seek, size;
             int idata;
-            if (Substring(InstrPrefix, 0, 3) == "DB ")
+            if(InstrPrefix.Length > 4)
             {
-                s = InstrPrefix.Substring(3, InstrPrefix.Length - 3);
-                assembledata.Bytes = Memory.HexToBytes(s);
-                assembledata.AsmLength = (short)assembledata.Bytes.Length;
-                return Assembler_Status.Assembler_OK;
-            }
-            if (Substring(InstrPrefix, 0, 4) == "NOP ")
-            {
-                s = InstrPrefix.Substring(4, InstrPrefix.Length - 4);
-                try
+                byte[] temp;
+                if(InstrPrefix[0] == 'D' && InstrPrefix[2] == ' ')
                 {
-                    idata = StrToInt_16(s);
-                }
-                catch (FormatException)
-                {
-                    ErrorInfo = ("Is not a valid integer!" + " Code: " + assembledata.Asm);
-                    ErrorState = "InvalidValue";
-                    return Assembler_Status.Assembler_Error;
-                }
-                assembledata.Bytes = new byte[idata];
-                assembledata.AsmLength = (short)idata;
-                for (int i = 0; i < idata; ++i)
-                {
-                    assembledata.Bytes[i] = 0x90;
-                }
-                return Assembler_Status.Assembler_OK;
-            }
-            seek = InstrPrefix.IndexOf("(");
-            if (seek != -1)//有涉及到类型转换
-            {
-                seek++;
-                size = InstrPrefix.IndexOf(")", seek) - seek;
-                string type = InstrPrefix.Substring(seek, size).ToUpper();
-                size++;
-                string value = Substring(assembledata.Asm, seek + size, assembledata.Asm.Length);
-                string Prefix = assembledata.Asm.Substring(0, assembledata.Asm.IndexOf(",") + 1);
-                try
-                {
-                    if (type == "FLOAT")
+                    switch (InstrPrefix[1])
                     {
-                        value = BitConverter.ToInt32(BitConverter.GetBytes(Convert.ToSingle(value)), 0).ToString("x");
-                        assembledata.Asm = Prefix + value;
+                        case 'B':
+                            temp = DataParse(assembledata.Asm, DataType.Byte);
+                            break;
+                        case 'W':
+                            temp = DataParse(assembledata.Asm, DataType.Word);
+                            break;
+                        case 'D':
+                            temp = DataParse(assembledata.Asm, DataType.Dword);
+                            break;
+                        case 'Q':
+                            temp = DataParse(assembledata.Asm, DataType.Qword);
+                            break;
+                        default:
+                            goto Decode;
                     }
-                    if (type == "DOUBLE")
+                    if (temp == null)
                     {
-                        value = BitConverter.ToInt64(BitConverter.GetBytes(Convert.ToDouble(value)), 0).ToString("x");
-                        assembledata.Asm = Prefix + value;
+                        return Assembler_Status.Assembler_Error;
+                    }
+                    else
+                    {
+                        assembledata.Bytes = temp;
+                        assembledata.AsmLength = (short)temp.Length;
+                        return Assembler_Status.Assembler_OK;
                     }
                 }
-                catch (FormatException)
+                if (Substring(InstrPrefix, 0, 4) == "NOP ")
                 {
-                    ErrorState = "InvalidValue";
-                    ErrorInfo = "Is not a valid value!" + " Code: " + assembledata.Asm;
-                    assembledata.error = ErrorInfo;
-                    return Assembler_Status.Assembler_Error;
+                    s = InstrPrefix.Substring(4, InstrPrefix.Length - 4);
+                    try
+                    {
+                        idata = StrToInt_16(s);
+                    }
+                    catch (FormatException)
+                    {
+                        ErrorInfo = ("Is not a valid integer!" + " Code: " + assembledata.Asm);
+                        ErrorState = "InvalidValue";
+                        return Assembler_Status.Assembler_Error;
+                    }
+                    assembledata.Bytes = new byte[idata];
+                    assembledata.AsmLength = (short)idata;
+                    for (int i = 0; i < idata; ++i)
+                    {
+                        assembledata.Bytes[i] = 0x90;
+                    }
+                    return Assembler_Status.Assembler_OK;
                 }
             }
+          Decode:
             Assembler_Data data = new Assembler_Data()
             {
                 Asm = assembledata.Asm,
@@ -1030,10 +1302,15 @@ namespace AutoAssembler
                 assembledata.error = data.error;
                 return Assembler_Status.Assembler_OK;
             }
-            assembledata.Bytes = data.Bytes;
-            assembledata.AsmLength = data.AsmLength;
-            assembledata.error = data.error;
-            return Assembler_Status.Assembler_Error;
+            else
+            {
+                assembledata.Bytes = data.Bytes;
+                assembledata.AsmLength = data.AsmLength;
+                assembledata.error = data.error;
+                ErrorInfo = string.Format("Unknown asm instruction:{0},error:\r\n{1}", assembledata.Asm, assembledata.error);
+                ErrorState = "UnknownAsmInstruction";
+                return Assembler_Status.Assembler_Error;
+            }
         }
         private bool RemoveLabelByName(string name,ref List<Label> labels)
         {
@@ -1300,15 +1577,21 @@ namespace AutoAssembler
             }
             return null;
         }
-        private bool AobScanModules(AobScan_args[] aobs, ref List<Label> labels)
+        private bool AobScans(AobScan_args[] aobs, ref List<Label> labels)
         {
             bool Odd = false;
             Label MainLabel;
             long MainResult;
             if(aobs.Length == 1)
             {
+                if(aobs[0].Module == null)
+                {
+                    MainResult = Memory.AobScan(aobs[0].AobString);
+                    goto Result;
+                }
                 MainResult = Memory.AobScanModule(aobs[0].Module, aobs[0].AobString);
-                if(MainResult == 0)
+            Result:
+                if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
                     ErrorInfo = "Cannot find AOB's address!Code:" + aobs[0].OriginCode;
@@ -1332,10 +1615,24 @@ namespace AutoAssembler
             Label TaskLabel;
             while (CurrentIndex <= MainMaxIndex)
             {
-                Task<long> task = new Task<long>(() => Memory.AobScanModule(aobs[TaskIndex].Module, aobs[TaskIndex].AobString));
+                Task<long> task;
+                if (aobs[TaskIndex].Module == null)
+                {
+                    task = new Task<long>(() => Memory.AobScan(aobs[TaskIndex].AobString));
+                }
+                else
+                {
+                    task = new Task<long>(() => Memory.AobScanModule(aobs[TaskIndex].Module, aobs[TaskIndex].AobString));
+                }
                 task.Start();
+                if (aobs[CurrentIndex].Module == null)
+                {
+                    MainResult = Memory.AobScan(aobs[0].AobString);
+                    goto Result;
+                }
                 MainResult = Memory.AobScanModule(aobs[CurrentIndex].Module, aobs[CurrentIndex].AobString);
-                if(MainResult == 0)
+            Result:
+                if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
                     ErrorInfo = "Cannot find AOB's address!Code:" + aobs[CurrentIndex].OriginCode;
@@ -1372,7 +1669,13 @@ namespace AutoAssembler
             if (Odd)
             {
                 MainMaxIndex = aobs.Length - 1;
+                if(aobs[MainMaxIndex].Module == null)
+                {
+                    MainResult = Memory.AobScan(aobs[MainMaxIndex].AobString);
+                    goto Result;
+                }
                 MainResult = Memory.AobScanModule(aobs[MainMaxIndex].Module, aobs[MainMaxIndex].AobString);
+            Result:
                 if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
@@ -1446,6 +1749,34 @@ namespace AutoAssembler
             MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(text);
             long temp;
             long Value = 0;
+            if(numbers.Length == 1)
+            {
+                string tempstr = numbers[0].Value;
+                try
+                {
+                    if (tempstr.IndexOf('.') != -1)
+                    {
+                        if (tempstr[tempstr.Length - 1] == 'f' || tempstr[tempstr.Length - 1] == 'F')
+                        {
+                            float singlef = Convert.ToSingle(tempstr.Substring(0, tempstr.Length - 1));
+                            retvalue = BitConverter.ToInt32(BitConverter.GetBytes(singlef), 0);
+                            return true;
+                        }
+                        double doublef = Convert.ToDouble(tempstr.Substring(0, tempstr.Length - 1));
+                        retvalue = BitConverter.ToInt64(BitConverter.GetBytes(doublef), 0);
+                        return true;
+                    }
+                    else
+                    {
+                        goto label;
+                    }
+                }
+                catch (FormatException)
+                {
+                    goto label;
+                }
+            }
+         label:
             for (int i = 0; i < numbers.Length; ++i)
             {
                 temp = Memory.GetModuleBaseaddress(numbers[i].Value);
@@ -1697,7 +2028,7 @@ namespace AutoAssembler
             {
                 if (AllocName == alloceds[i].AllocName)
                 {
-                    bool ok = MemoryAPI.VirtualFreeEx(Memory.ProcessHandle, alloceds[i].Address, alloceds[i].size,MEM_DECOMMIT);
+                    bool ok = MemoryAPI.VirtualFreeEx(Memory.ProcessHandle, alloceds[i].Address, alloceds[i].Size,MEM_DECOMMIT);
                     alloceds.RemoveAt(i);
                     return ok;
                 }

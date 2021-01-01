@@ -1,5 +1,4 @@
-﻿using System.Windows.Forms;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -16,6 +15,8 @@ namespace AutoAssembler
         public bool is64bit;
         public bool ok;
         public ProcessModuleCollection ProcessModuleInfo;
+        private List<THeapUnit> Heaps;
+        private List<AutoAssembler.AllocedMemory> BigBlocks;
         public MemoryAPI(string ProcessName)
         {
             ok = true;
@@ -37,7 +38,38 @@ namespace AutoAssembler
             if(ProcessHandle == null || ProcessModuleInfo == null)
             {
                 ok = false;
+                return;
             }
+            Heaps = new List<THeapUnit>();
+            BigBlocks = new List<AutoAssembler.AllocedMemory>();
+            CreateHeap(0, 64);
+        }
+        public void Close()
+        {
+            foreach(THeapUnit heap in Heaps)
+            {
+                VirtualFreeEx(ProcessHandle, heap.BaseAddress, heap.HeapSize * MemoryUnitSize, MEM_DECOMMIT);
+            }
+            foreach(AutoAssembler.AllocedMemory alloced in BigBlocks)
+            {
+                VirtualFreeEx(ProcessHandle, alloced.Address, alloced.Size, MEM_DECOMMIT);
+            }
+        }
+        const int MemoryUnitSize = 1024;
+        const int DefaultHeapSize = 32;
+        public struct TMemUnit
+        {
+            public long Address;
+            public bool Free;
+        }
+        public struct THeapUnit
+        {
+            public TMemUnit[] Memorys;
+            public long BaseAddress;
+            public int HeapNumber;
+            public int HeapSize;
+            public int MaxSpace;
+            public int FastIndex;
         }
         public enum ScanKey
         {
@@ -228,12 +260,6 @@ namespace AutoAssembler
             }
             return index;
         }
-        public static void PressKey(Keys key,ScanKey scankey,int delay)
-        {
-            keybd_event((byte)key, (byte)scankey, 0, 0);
-            Thread.Sleep(delay);
-            keybd_event((byte)key,(byte)scankey, KEYEVENTF_KEYUP, 0);
-        }
         public IntPtr CreateThread(long address)
         {
             int dw = 0;
@@ -248,14 +274,202 @@ namespace AutoAssembler
             }
             return (IntPtr)0;
         }
-        public long AllocMemory(long address,int size)
+        private bool CreateHeap(long BaseAddress,int HeapSize)
         {
-            long value = VirtualAllocEx(ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (value != 0)
-            {
-                return value;
+            THeapUnit heap = new THeapUnit();
+            if(BaseAddress == 0)
+            {                
+                BaseAddress = VirtualAllocEx(ProcessHandle, 0, HeapSize * MemoryUnitSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (BaseAddress == 0)
+                    return false;
+                TMemUnit[] units = new TMemUnit[HeapSize];
+                for(int i = 0;i < units.Length; i++)
+                {
+                    units[i].Address = BaseAddress + (i * MemoryUnitSize);
+                    units[i].Free = true;
+                }
+                heap.BaseAddress = 0;
+                heap.FastIndex = 0;
+                heap.HeapSize = HeapSize;
+                heap.MaxSpace = HeapSize;
+                heap.HeapNumber = Heaps.Count;
+                heap.Memorys = units;
+                Heaps.Add(heap);
+                return true;
             }
-            return value;
+            else
+            {
+                BaseAddress = FindNearFreeBlock(BaseAddress, HeapSize * MemoryUnitSize);
+                if (BaseAddress == 0)
+                    return false;
+                VirtualAllocEx(ProcessHandle, BaseAddress, HeapSize * MemoryUnitSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                TMemUnit[] units = new TMemUnit[HeapSize];
+                for (int i = 0; i < units.Length; i++)
+                {
+                    units[i].Address = BaseAddress + (i * MemoryUnitSize);
+                    units[i].Free = true;
+                }
+                heap.BaseAddress = BaseAddress;
+                heap.FastIndex = 0;
+                heap.HeapSize = HeapSize;
+                heap.MaxSpace = HeapSize;
+                heap.HeapNumber = Heaps.Count;
+                heap.Memorys = units;
+                Heaps.Add(heap);
+                return true;
+            }
+        }
+        private void RefreshHeap(int HeapNumber)
+        {
+            THeapUnit heap = Heaps[HeapNumber];
+            TMemUnit[] buffer = heap.Memorys;
+            int i = 0;
+            foreach(TMemUnit mem in buffer)
+            {
+                if(mem.Free == true)
+                {
+                    heap.FastIndex = i;
+                    break;
+                }
+                i++;
+            }
+            int PrevSize, CurSize;
+            PrevSize = CurSize = 0;
+            for(i = 0; i < buffer.Length; i++)
+            {
+                if (buffer[i].Free)
+                {
+                    CurSize++;
+                }
+                else
+                {
+                    if(CurSize > PrevSize) PrevSize = CurSize;
+                    CurSize = 0;
+                }
+            }
+            if (CurSize > PrevSize)
+            {
+                heap.MaxSpace = CurSize;
+            }
+            else
+            {
+                heap.MaxSpace = PrevSize;
+            }
+            Heaps[HeapNumber] = heap;
+        }
+        public bool AllocMemory(string Symbol,long address,int size,out AutoAssembler.AllocedMemory Mem)
+        {
+            size = (size / MemoryUnitSize) + ((size % MemoryUnitSize) > 0 ? 1 : 0);
+            Mem = new AutoAssembler.AllocedMemory()
+            {
+                AllocName = Symbol,
+            };
+            if(size >= 8)
+            {
+                address = FindNearFreeBlock(address, size * MemoryUnitSize);
+                if (address == 0)
+                    return false;
+                VirtualAllocEx(ProcessHandle, address, size * MemoryUnitSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                Mem.Address = address;Mem.RefHeap = -1;Mem.Size = size * MemoryUnitSize;
+                BigBlocks.Add(Mem);
+                return true;
+            }
+            int HeapNumber = 0;
+            foreach(THeapUnit heap in Heaps)
+            {
+                if(Math.Abs(heap.BaseAddress - address) < 0x80000000 && heap.MaxSpace >= size)
+                {
+                    TMemUnit[] buffer = heap.Memorys;
+                    if (size == 1)
+                    {
+                        buffer[heap.FastIndex].Free = false;
+                        Mem.Address = buffer[heap.FastIndex].Address; Mem.RefHeap = HeapNumber; Mem.MemNumber = heap.FastIndex; Mem.Size = MemoryUnitSize;
+                        RefreshHeap(HeapNumber);
+                        return true;
+                    }
+                    int CurSize;
+                    CurSize = 0;
+                    for (int i = 0; i < buffer.Length; i++)
+                    {
+                        if (buffer[i].Free)
+                        {
+                            CurSize++;
+                            if (CurSize == size)
+                            {
+                                int Index = i - CurSize;
+                                Mem.Address = buffer[Index].Address;Mem.RefHeap = HeapNumber;Mem.MemNumber = Index; Mem.Size = size * MemoryUnitSize;
+                                for (int k = 0;k < size; k++)
+                                {
+                                    buffer[Index].Free = false;
+                                    Index++;
+                                }
+                                RefreshHeap(HeapNumber);
+                                return true;
+                            }
+                        }
+                        else
+                        {
+                            CurSize = 0;
+                        }
+                    }
+                }
+                else
+                {
+                    HeapNumber++;
+                    continue;
+                }
+            }
+            if (!CreateHeap(address, DefaultHeapSize))
+            {
+                return false;
+            }
+            else
+            {
+                if(!AllocMemory(Symbol,address, size * MemoryUnitSize,out Mem))
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+        }
+        public bool FreeMemory(AutoAssembler.AllocedMemory memory)
+        {
+            if(memory.RefHeap == -1)
+            {
+                foreach(AutoAssembler.AllocedMemory tmp in BigBlocks)
+                {
+                    if(tmp.AllocName == memory.AllocName)
+                    {
+                        VirtualFreeEx(ProcessHandle, memory.Address, memory.Size, MEM_DECOMMIT);
+                        return true;
+                    }
+                }
+                return false;
+            }
+            memory.Size = (memory.Size / MemoryUnitSize) + ((memory.Size % MemoryUnitSize) > 0 ? 1 : 0);
+            THeapUnit heap = Heaps[memory.RefHeap];
+            for(int i = memory.MemNumber;i < memory.MemNumber + memory.Size; i++)
+            {
+                heap.Memorys[i].Free = true;
+                for(int k = 0;k < 128; k++)
+                {
+                    WriteMemoryInt64(heap.Memorys[i].Address + (k*8), 0);
+                }
+            }
+            RefreshHeap(memory.RefHeap);
+            return true;
+        }
+        public string GetHeapsInfo()
+        {
+
+            return null;
+        }
+        public long VirtualAlloc(long address,int size)
+        {
+            return VirtualAllocEx(ProcessHandle, address, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         }
         private bool Case_Sensitive(ref string module)
         {
@@ -432,6 +646,65 @@ namespace AutoAssembler
             }
             return Address;
         }
+        public long AobScan(string MarkCode)
+        {
+            if (String.IsNullOrEmpty(MarkCode))
+                return 0;
+            if (MarkCode.Replace(" ", "").Length % 2 != 0)
+                return 0;
+            short[] CodeArray = HexStringToIntArray(MarkCode);
+            int i, j, k;
+            int BufferLen, CodeLen;
+            int Offest;
+            CodeLen = CodeArray.Length;
+            long BeginAddress, EndAddress, CurrentAddress;
+            byte[] Buffer;
+            if (is64bit)
+            {
+                BeginAddress = x64MinAddress;
+                EndAddress = x64MaxAddress;
+            }
+            else
+            {
+                BeginAddress = x32MinAddress;
+                EndAddress = x32MaxAddress;
+            }
+            CurrentAddress = BeginAddress;
+            MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
+            while (CurrentAddress < EndAddress)
+            {
+                if (VirtualQueryEx(ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
+                    return 0;
+                if (mbi.Protect != PAGE_READWRITE || mbi.State != MEM_COMMIT)
+                {
+                    CurrentAddress += mbi.RegionSize;
+                    continue;
+                }
+                Buffer = new byte[mbi.RegionSize];
+                if (!ReadMemoryByteSet(ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
+                    return 0;
+                BufferLen = Buffer.Length;
+                i = j = 0;
+                while (i < BufferLen)
+                {
+                    if (Buffer[i] == CodeArray[j] || CodeArray[j] == 256)
+                    {
+                        ++i; ++j;
+                        if (j == CodeLen)
+                            return CurrentAddress + (i - CodeLen);
+                        continue;
+                    }
+                    Offest = i + CodeLen;
+                    if (Offest >= mbi.RegionSize)
+                        break;
+                    for (k = CodeLen - 1; k >= 0 && Buffer[Offest] != CodeArray[k]; k--) ;
+                    i += (CodeLen - k);
+                    j = 0;
+                }
+                CurrentAddress += mbi.RegionSize;
+            }
+            return 0;
+        }
         public long AobScanModule(string Module, string MarkCode)
         {
             if (String.IsNullOrEmpty(MarkCode))
@@ -442,7 +715,7 @@ namespace AutoAssembler
             short[] CodeArray = HexStringToIntArray(MarkCode);
             int i, j, k;
             int BufferLen, CodeLen;
-            int Offest = 0;
+            int Offest;
             CodeLen = CodeArray.Length;
             //定义模块信息及有关变量
             long BeginAddress, EndAddress, CurrentAddress;
@@ -506,7 +779,7 @@ namespace AutoAssembler
                 dest[i] = src[i];
             }
         }
-        private short[] HexStringToIntArray(string HexString)
+        public short[] HexStringToIntArray(string HexString)
         {
             HexString = HexString.Replace(" ", "");
             if (HexString.Length % 2 != 0)
@@ -518,7 +791,7 @@ namespace AutoAssembler
             for (int i = 0; i < times; i++)
             {
                 HexArray[i] = HexString.Substring(cur, 2);
-                if (HexArray[i] == "??" || HexArray[i] == "**")
+                if (HexArray[i] == "??" || HexArray[i] == "**" || HexArray[i] == "*")
                 {
                     CopyBytes[i] = 256;
                     cur += 2;
