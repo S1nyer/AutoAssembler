@@ -30,6 +30,7 @@ A C# Class library like CE's AutoAssembler<br>
 	* 例如:`mov rax,100.0f` -> `mov rax,42C80000`,字节码:`48 C7 C0 00 00 C8 42`
 	* `mov rax,100.0` -> `mov rax,4059000000000000`,字节码:`48 B8 00 00 00 00 00 00 59 40`.注意不要忘记小数位`.0`!
 * 修正`Define`指令的格式.与CE的语法一致.
+* 添加了几个调试函数.`GetAddressTest`是获取地址表达式解析过程,`GetHeapInfo`获取堆列表信息.
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,不一一列举了.<br>
 * `cmp [rcx] ,0`这句汇编代码将无法被XEDParse解析,它会提示:`Ambiguous memory size`(模糊的操作数大小),因为您没有指定对`[rcx]`的操作大小,所以应该在`[rcx]`前加上操作数大小 `byte/word/dword/qword ptr`,如:`cmp dword ptr [rcx]`.为什么CE支持`cmp [rcx],0`这样的语法?因为ce对没用限定操作数大小的内存操作默认会编译成 `cmp dword ptr [address],0`.

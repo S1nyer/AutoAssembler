@@ -396,7 +396,7 @@ namespace AutoAssembler
                             CurSize++;
                             if (CurSize == size)
                             {
-                                int Index = i - CurSize;
+                                int Index = (i - CurSize) + 1;
                                 Mem.Address = buffer[Index].Address;Mem.RefHeap = HeapNumber;Mem.MemNumber = Index; Mem.Size = size * MemoryUnitSize;
                                 for (int k = 0;k < size; k++)
                                 {
@@ -464,8 +464,19 @@ namespace AutoAssembler
         }
         public string GetHeapsInfo()
         {
-
-            return null;
+            StringBuilder builder = new StringBuilder();
+            foreach(THeapUnit heap in Heaps)
+            {
+                builder.AppendFormat("Heap {0},BaseAddress:0x{1:X},HeapSize:0x{2:X}\r\n", heap.HeapNumber, heap.BaseAddress, heap.HeapSize * MemoryUnitSize);
+                TMemUnit[] temp = heap.Memorys;
+                for(int i = 0;i < heap.HeapSize; i++)
+                {
+                    builder.AppendFormat("Unit {0},Address:0x{1:X},Free:{2}\r\n", i, temp[i].Address, temp[i].Free);
+                }
+                builder.AppendFormat("Heap {0} output finished!\r\n\r\n", heap.HeapNumber);
+            }
+            builder.Append("Done!");
+            return builder.ToString();
         }
         public long VirtualAlloc(long address,int size)
         {

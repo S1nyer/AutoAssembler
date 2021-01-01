@@ -59,6 +59,19 @@ namespace AutoAssembler
             }
             GC.Collect(200,GCCollectionMode.Optimized);
         }
+        public bool ChangeScript(string name, Script script)
+        {
+            for (int i = 0; i < Scripts.Count; i++)
+            {
+                if (Scripts[i].Name == name)
+                {
+                    Scripts.RemoveAt(i);
+                    Scripts.Insert(i, script);
+                    return true;
+                }
+            }
+            return false;
+        }
         public bool ProcessIsAlive()
         {
             long address = Memory.VirtualAlloc(0, 0x1000);
@@ -1485,6 +1498,103 @@ namespace AutoAssembler
                 }
             }
             return Address;
+        }
+        public string GetAddressTest(string Expression)
+        {
+            string RetExpression = Expression + "\r\n->";
+            string TempStr = Expression;
+            Expression = Expression.Replace("[", "");
+            char[] a = { ']' };
+            string[] SplitExps = Expression.Split(a, StringSplitOptions.RemoveEmptyEntries);
+            long Address = 0;
+            long temp = 0;
+            for (int i = 0; i < SplitExps.Length; i++)
+            {
+                MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(SplitExps[i]);
+                int x = 0;
+                while (x < numbers.Length)
+                {
+                    temp = 0;
+                    //寻找全局符号数组
+                    foreach (RegisterSymbol symbol in RegisteredSymbols)
+                    {
+                        if (symbol.SymbolName == numbers[x].Value)
+                        {
+                            TempStr = TempStr.Replace(symbol.SymbolName, symbol.Address.ToString("X"));
+                            temp = symbol.Address;
+                            break;
+                        }
+                    }
+                    if (temp == 0)
+                    {
+                        //未找到到指定符号,判断其是否为模块
+                        temp = Memory.GetModuleBaseaddress(numbers[x].Value);
+                        if (temp == 0)
+                        {
+                            //未找到模块,判断是否为静态地址
+                            try
+                            {
+                                temp = StrToLong_16(numbers[x].Value);
+                            }
+                            catch (FormatException)
+                            {
+                                //非全局符号,模块及静态地址
+                                return "表达式错误!无法识别的符号:" + numbers[x].Value;
+                            }
+                        }
+                        else
+                        {
+                            TempStr = TempStr.Replace(numbers[x].Value, temp.ToString("X"));
+                        }
+                    }
+                    switch (numbers[x].Type)
+                    {
+                        case MemoryAPI.OperationType.Add:
+                            Address += temp;
+                            break;
+                        case MemoryAPI.OperationType.Sub:
+                            Address -= temp;
+                            break;
+                        case MemoryAPI.OperationType.Mul:
+                            Address *= temp;
+                            break;
+                    }
+                    ++x;
+                }
+                if (SplitExps.Length == 1)
+                {
+                    if (Expression[Expression.Length - 1] == ']')
+                    {
+                        if (!Memory.ReadMemoryInt64(Address, ref Address))
+                        {
+                            return "表达式错误:指向一个无效的内存地址!";
+                        }
+                    }
+                    RetExpression += TempStr;
+                    RetExpression += "\r\n->" + Address.ToString("X");
+                    return RetExpression;
+                }
+                if (Memory.is64bit)
+                {
+                    if (!Memory.ReadMemoryInt64(Address, ref Address))
+                    {
+                        return "表达式错误:指向一个无效的内存地址!!";
+                    }
+                    continue;
+                }
+                else
+                {
+                    int tAddress = (int)Address;
+                    if (!Memory.ReadMemoryInt32(Address, ref tAddress))
+                    {
+                        return "表达式错误:指向一个无效的内存地址!!";
+                    }
+                    Address = tAddress;
+                }
+            }
+            RetExpression += TempStr;
+            RetExpression += "\r\n->" + Address.ToString("X");
+            return RetExpression;
         }
         public string[] GetExecuteMode(string Code,bool Enable)
         {
