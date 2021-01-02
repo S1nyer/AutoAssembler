@@ -23,6 +23,8 @@ namespace AutoAssembler
             OK = true;
             Memory = new MemoryAPI(ProcessName);
             RegisteredSymbols = new List<RegisterSymbol>();
+            Scripts = new List<Script>();
+            TempScriptAlloceds = new List<AllocedMemory>();
             if (!Memory.ok)
             {
                 OK = false;
@@ -30,8 +32,6 @@ namespace AutoAssembler
                 ErrorInfo = "Open process " + ProcessName + " failed!";
                 return;
             }
-            Scripts = new List<Script>();
-            TempScriptAlloceds = new List<AllocedMemory>();
         }
         /// <summary>
         /// 重新初始化自动汇编引擎,包括使所有脚本回到初始状态(使所有脚本处于未启用状态，并为所有脚本分配一个全新alloceds成员),清除全局符号列表，清除匿名脚本内存分配堆.(但它不会撤销对之前附加的程序进行的任意更改)
@@ -637,6 +637,8 @@ namespace AutoAssembler
             for(i = 0;i < TotalLine; i++)
             {
                 int loops = labels.Count;
+                if (string.IsNullOrEmpty(Codes[i]))
+                    continue;
                 Currentline = Codes[i];
                 InstrPrefix = Currentline.ToUpper();
                 long diff;
