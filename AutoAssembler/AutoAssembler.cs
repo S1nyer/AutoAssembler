@@ -10,6 +10,7 @@ namespace AutoAssembler
 {
     public class AutoAssembler
     {
+        private static AutoAssembler SymbolDecoder;
         public AutoAssembler([In]MemoryAPI API)
         {
             Memory = API;
@@ -17,6 +18,7 @@ namespace AutoAssembler
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
             OK = true;
+            SymbolDecoder = this;
         }
         public AutoAssembler(string ProcessName)
         {
@@ -25,6 +27,7 @@ namespace AutoAssembler
             RegisteredSymbols = new List<RegisterSymbol>();
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
+            SymbolDecoder = this;
             if (!Memory.ok)
             {
                 OK = false;
@@ -57,6 +60,7 @@ namespace AutoAssembler
                     Scripts[i].alloceds = new List<AllocedMemory>();
                 }
             }
+            SymbolDecoder = this;
             GC.Collect(200,GCCollectionMode.Optimized);
         }
         public bool ChangeScript(string name, Script script)
@@ -108,6 +112,9 @@ namespace AutoAssembler
         public bool OK;
         private MemoryAPI Memory;
         private byte[] DataBuf = new byte[1024];
+        private List<Label> SymbolsPointer;
+        private int CodeNumber, AssembledsNumber;
+        private long CurAddress;
         public enum Assembler_Status
         {
             //XED汇编引擎状态
@@ -627,6 +634,7 @@ namespace AutoAssembler
                 ErrorState = "InvalidCode";
                 goto failed;
             }
+            SymbolsPointer = labels;
             //开始处理汇编指令集
             AsmData = new IAssemble
             {
@@ -636,49 +644,15 @@ namespace AutoAssembler
             TotalLine = Codes.Length;
             for(i = 0;i < TotalLine; i++)
             {
-                int loops = labels.Count;
+                CurAddress = CurrentAddress;
+                CodeNumber = i;
+                AssembledsNumber = assembleds.Count;
                 if (string.IsNullOrEmpty(Codes[i]))
                     continue;
                 Currentline = Codes[i];
                 InstrPrefix = Currentline.ToUpper();
-                long diff;
                 if (Currentline[Currentline.Length - 1] != ':')//处理汇编指令
                 {
-                    for (j = 0; j < loops; ++j)
-                    {
-                        if (Currentline.IndexOf(labels[j].LabelName) != -1)
-                        {
-                            label = labels[j];
-                            if (label.VirtualLabel == true)
-                            {
-                                reference = new Reference()
-                                {
-                                    CurrentAddress = CurrentAddress,
-                                    CodeReflect = (short)i,
-                                    AssembledsReflect = (short)assembleds.Count
-                                };
-                                label.references.Add(reference);
-                                diff = Math.Abs(labels[j].GuessAddress - CurrentAddress);
-                                if(diff < 0x80)
-                                {
-                                    Currentline = Currentline.Replace(labels[j].LabelName, (labels[j].GuessAddress + 0x7f).ToString("x"));
-                                }else if(diff < 0x80000000)
-                                {
-                                    Currentline = Currentline.Replace(labels[j].LabelName, (labels[j].GuessAddress + 0x7fffffff).ToString("x"));
-                                }
-                                else
-                                {
-                                    ErrorState = "InvalidCode";
-                                    ErrorInfo = "Offset more than 0x80000000,XEDParse can't parse it!Assemble Code:" + Currentline;
-                                    goto failed;
-                                }
-                                continue;
-                            }
-                            Currentline = Currentline.Replace(labels[j].LabelName,labels[j].Address.ToString("x"));
-                            continue;
-                        }
-                        continue;
-                    }
                     AsmData.Asm = Currentline;
                     AsmData.CurrentAddress = CurrentAddress;
                     status = ICompile(ref AsmData);
@@ -1322,7 +1296,7 @@ namespace AutoAssembler
                 assembledata.Bytes = data.Bytes;
                 assembledata.AsmLength = data.AsmLength;
                 assembledata.error = data.error;
-                ErrorInfo = string.Format("Unknown asm instruction:{0},error:\r\n{1}", assembledata.Asm, assembledata.error);
+                ErrorInfo = string.Format("Unknown asm instruction:{0}\terror:\r\n{1}", assembledata.Asm, assembledata.error);
                 ErrorState = "UnknownAsmInstruction";
                 return Assembler_Status.Assembler_Error;
             }
@@ -1858,12 +1832,18 @@ namespace AutoAssembler
         }
         private bool ParseCallBack(string text,ref Int64 retvalue)
         {
-            MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(text);
-            long temp;
-            long Value = 0;
-            if(numbers.Length == 1)
+            if (SymbolDecoder.SymbolParse(text, out retvalue))
+                return true;
+            else
+                return false;
+        }
+        private bool SymbolParse(string exp,out long value)
+        {
+            long reserved = 0,CurrentAddress = 0;
+            MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(exp);
+            string tempstr = numbers[0].Value;
+            if (numbers.Length == 1)
             {
-                string tempstr = numbers[0].Value;
                 try
                 {
                     if (tempstr.IndexOf('.') != -1)
@@ -1871,52 +1851,77 @@ namespace AutoAssembler
                         if (tempstr[tempstr.Length - 1] == 'f' || tempstr[tempstr.Length - 1] == 'F')
                         {
                             float singlef = Convert.ToSingle(tempstr.Substring(0, tempstr.Length - 1));
-                            retvalue = BitConverter.ToInt32(BitConverter.GetBytes(singlef), 0);
+                            value = BitConverter.ToInt32(BitConverter.GetBytes(singlef), 0);
                             return true;
                         }
                         double doublef = Convert.ToDouble(tempstr.Substring(0, tempstr.Length - 1));
-                        retvalue = BitConverter.ToInt64(BitConverter.GetBytes(doublef), 0);
+                        value = BitConverter.ToInt64(BitConverter.GetBytes(doublef), 0);
                         return true;
-                    }
-                    else
-                    {
-                        goto label;
                     }
                 }
                 catch (FormatException)
                 {
                     goto label;
                 }
+                goto label;
             }
-         label:
             for (int i = 0; i < numbers.Length; ++i)
             {
-                temp = Memory.GetModuleBaseaddress(numbers[i].Value);
-                if (temp == 0)
+                long temp = 0;
+                reserved = CurrentAddress;
+                CurrentAddress = GetAddressBySymbolName(numbers[i].Value, ref SymbolsPointer);
+                if (CurrentAddress == 0)
                 {
-                    try
+                    CurrentAddress = Memory.GetModuleBaseaddress(numbers[i].Value);
+                    if (CurrentAddress == 0)
                     {
-                        temp = StrToLong_16(numbers[i].Value);
-                    }
-                    catch (FormatException)
-                    {
-                        return false;
+                        try
+                        {
+                            CurrentAddress = reserved;
+                            temp = StrToLong_16(numbers[i].Value);
+                        }
+                        catch (FormatException)
+                        {//不是数字和模块,应为未定义标签
+                            value = 0;
+                            return false;
+                        }
                     }
                 }
                 switch (numbers[i].Type)
                 {
                     case MemoryAPI.OperationType.Add:
-                        Value += temp;
+                        CurrentAddress += temp;
                         break;
                     case MemoryAPI.OperationType.Sub:
-                        Value -= temp;
+                        CurrentAddress -= temp;
                         break;
                     case MemoryAPI.OperationType.Mul:
-                        Value *= temp;
+                        CurrentAddress *= temp;
                         break;
                 }
             }
-            retvalue = Value;
+            value = CurrentAddress;
+            return true;
+        //不涉及到多重运算
+        label:
+            CurrentAddress = GetAddressBySymbolName(numbers[0].Value, ref SymbolsPointer);
+            if (CurrentAddress == 0)
+            {
+                CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
+                if (CurrentAddress == 0)
+                {
+                    try
+                    {
+                        CurrentAddress = StrToLong_16(numbers[0].Value);
+                    }
+                    catch (FormatException)
+                    {//不是数字和模块,应为未定义标签
+                        value = 0;
+                        return false;
+                    }
+                }
+            }
+            value = CurrentAddress;
             return true;
         }
         private Address LabelParse(string expression,ref List<Label> labels, long CurrentAddress)
@@ -2154,6 +2159,30 @@ namespace AutoAssembler
             {
                 if(LabelName == Labels[i].LabelName && Labels[i].VirtualLabel != true)
                 {
+                    return Labels[i].Address;
+                }
+            }
+            return 0;
+        }
+        private long GetAddressBySymbolName(string SymbolName, ref List<Label> Labels)
+        {
+            int x = Labels.Count;
+            for (int i = 0; i < x; ++i)
+            {
+                if (SymbolName == Labels[i].LabelName)
+                {
+                    if (Labels[i].VirtualLabel)
+                    {
+                        Label label = Labels[i];
+                        Reference reference = new Reference()
+                        {
+                            CurrentAddress = CurAddress,
+                            CodeReflect = (short)CodeNumber,
+                            AssembledsReflect = (short)AssembledsNumber
+                        };
+                        label.references.Add(reference);
+                        return Labels[i].GuessAddress + 0x7f;
+                    }
                     return Labels[i].Address;
                 }
             }
