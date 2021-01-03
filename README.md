@@ -41,7 +41,7 @@ A C# Class library like CE's AutoAssembler<br>
 * 自动汇编脚本中的涉及到的符号,包括脚本名称、全局符号、分配的内存、标签全部区分大小写!<br>
 * 当全局内存符号(RegisteredSymbols)出现重复时,自动汇编引擎并不会提示冲突,而是全局内存符号的值覆盖成新申请的值.<br>
 * XEDParse的内存操作数不支持 符号+偏移,例如`[newmem+1000]`.但你或许可以考虑下面这种方式
-![image](https://github.com/S1nyer/AutoAssembler/tree/master/image\pic1.png)
+![image](https://github.com/S1nyer/AutoAssembler/tree/master/image/pic1.png)
 * 获取地址优先级:全局符号 > 模块 > 静态地址<br>
 * 自动汇编引擎的加减乘法是没有运算优先级的,它是线性运算,所以`Label + 2 * 8`相当于`(Label + 2) * 8`,无论是在自动汇编脚本中还是GetAddress函数中都是如此.<br>
 * 当汇编脚本执行失败时,具体可以通过`GetErrorInfo`函数获取详细错误信息.
