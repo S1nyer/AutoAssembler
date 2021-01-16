@@ -27,7 +27,6 @@ namespace AutoAssembler
             RegisteredSymbols = new List<RegisterSymbol>();
             Scripts = new List<Script>();
             TempScriptAlloceds = new List<AllocedMemory>();
-            SymbolDecoder = this;
             if (!Memory.ok)
             {
                 OK = false;
@@ -308,6 +307,7 @@ namespace AutoAssembler
         public bool AutoAssemble(string[] Codes,ref List<AllocedMemory> alloceds)
         {
             //初始化各种数据
+            SymbolDecoder = this;
             List<string> AssembleCode = new List<string>();
             List<string> Threads = new List<string>();
             List<string> Deallocs = new List<string>();
@@ -516,7 +516,7 @@ namespace AutoAssembler
                     }
                     if(alloc.Address == 0)
                     {
-                        ErrorInfo = "Alloc memory " + allocs[i].AllocName + " failed!";
+                        ErrorInfo = "Alloc memory " + alloc.AllocName + " failed!";
                         ErrorState = "MemoryAllocFailed";
                         goto failed;
                     }
@@ -721,28 +721,6 @@ namespace AutoAssembler
                 if (!Reassemble(Codes,ref labels,ref assembleds, ref CurrentAddress, reassemble_args,ref LastReassemble, ReassembleType.LastReassemble))
                     goto failed;
             }
-            //执行释放内存操作
-            List<AllocedMemory> tempAllocs = new List<AllocedMemory>();
-            for (i = 0; i < alloceds.Count; i++)
-                tempAllocs.Add(alloceds[i]);
-            for (i = 0; i < allocs.Count; i++)
-                tempAllocs.Add(allocs[i]);
-            for (i = 0; i < Deallocs.Count; ++i)
-            {
-                s = Deallocs[i];
-                int index = 0;
-                foreach(AllocedMemory temp in tempAllocs)
-                {
-                    if(temp.AllocName == s)
-                    {
-                        Memory.FreeMemory(tempAllocs[index]);
-                        tempAllocs.RemoveAt(index);
-                        break;
-                    }
-                    index++;
-                }
-                continue;
-            }
             //将分散的汇编指令以区块为标准合并
             Assembled[] assembledArray = assembleds.ToArray();
             assembledArray = MergeAssembles(assembledArray);
@@ -767,6 +745,28 @@ namespace AutoAssembler
                     ok = false;
                     continue;
                 }
+            }
+            //执行释放内存操作
+            List<AllocedMemory> tempAllocs = new List<AllocedMemory>();
+            for (i = 0; i < alloceds.Count; i++)
+                tempAllocs.Add(alloceds[i]);
+            for (i = 0; i < allocs.Count; i++)
+                tempAllocs.Add(allocs[i]);
+            for (i = 0; i < Deallocs.Count; ++i)
+            {
+                s = Deallocs[i];
+                int index = 0;
+                foreach (AllocedMemory temp in tempAllocs)
+                {
+                    if (temp.AllocName == s)
+                    {
+                        Memory.FreeMemory(tempAllocs[index]);
+                        tempAllocs.RemoveAt(index);
+                        break;
+                    }
+                    index++;
+                }
+                continue;
             }
             //将脚本注册的全局符号赋值,将分配的内存(alloceds)更新,汇编脚本处理完毕
             alloceds = tempAllocs;
@@ -836,7 +836,7 @@ namespace AutoAssembler
             for (i = 0; i < loop; ++i)
             {
                 reference = labels[args.LabelIndex].references[i];
-                data.Asm = ReplaceTokens(codes[reference.CodeReflect], ref labels);
+                data.Asm = codes[reference.CodeReflect];
                 data.CurrentAddress = reference.CurrentAddress;
                 if (ICompile(ref data) == Assembler_Status.Assembler_Error)
                 {
@@ -895,7 +895,7 @@ namespace AutoAssembler
                 }
                 else
                 {
-                    data.Asm = ReplaceTokens(code, ref labels);
+                    data.Asm = code;
                     data.CurrentAddress = CurrentAddress;
                     if (ICompile(ref data) == Assembler_Status.Assembler_OK)
                     {
@@ -957,22 +957,6 @@ namespace AutoAssembler
             return false;
         Success:
             return true;
-        }
-        private string ReplaceTokens(string code,ref List<Label> labels)
-        {
-            int loop = labels.Count;
-            int i = 0;
-            while(i < loop)
-            {
-                if (labels[i].VirtualLabel)
-                {
-                    ++i;
-                    continue;
-                }
-                code = code.Replace(labels[i].LabelName, labels[i].Address.ToString("x"));
-                ++i;
-            }
-            return code;
         }
         private bool DefineExist(string define,ref List<Define> defines)
         {
@@ -1444,14 +1428,15 @@ namespace AutoAssembler
                     }
                     ++x;
                 }
-                if (SplitExps.Length == 1)
+                if (i == SplitExps.Length - 1)
                 {
-                    if(Expression.IndexOf(']') != -1)
+                    if (Expression[Expression.Length - 1] == ']')
                     {
                         if (!Memory.ReadMemoryInt64(Address, ref Address))
                         {
                             return 0;
                         }
+                        return Address;
                     }
                     return Address;
                 }
