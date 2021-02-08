@@ -10,7 +10,7 @@ A C# Class library like CE's AutoAssembler<br>
 ## 更新内容:2020.2.8
 * 调整自动汇编引擎符号解析优先级:全局符号 > 常数 > 模块.
 * 优化符号解析速度
-* 当为了与CE一致,当`alloc`未指定`AllocateNearThisAddress`(附近地址)参数时,地址与上一个`alloc`对齐(分配到上一个`alloc`的附近).
+* 为了与保持CE一致,当`alloc`未指定`AllocateNearThisAddress`(附近地址)参数时,地址与上一个`alloc`对齐(分配到上一个`alloc`的附近).
 * 修复虚拟标签被识别成常数的bug
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,不一一列举了.<br>
