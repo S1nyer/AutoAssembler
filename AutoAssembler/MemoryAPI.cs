@@ -24,6 +24,11 @@ namespace AutoAssembler
             try
             {                
                 Process process = Process.GetProcessesByName(ProcessName)[0];
+                if (DateTime.Now.Subtract(process.StartTime).TotalMilliseconds < 3000)
+                {
+                    Thread.Sleep(1000);
+                    process.Refresh();
+                }
                 PID = process.Id;
                 WindowHandle = process.MainWindowHandle;
                 ProcessModuleInfo = process.Modules;

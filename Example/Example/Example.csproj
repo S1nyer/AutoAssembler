@@ -7,9 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="AutoAssembler">
-      <HintPath>bin\x64\Debug\netcoreapp3.1\AutoAssembler.dll</HintPath>
-    </Reference>
+    <ProjectReference Include="..\..\AutoAssembler\AutoAssembler.csproj" />
   </ItemGroup>
 
 </Project>

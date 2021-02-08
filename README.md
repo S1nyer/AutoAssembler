@@ -7,12 +7,11 @@ A C# Class library like CE's AutoAssembler<br>
   * AOBScan,AOBscanmodule,Alloc,Assert,Dealloc,Registersymbol,unRegistersymbol,Label,CreateThread,Define<br>
     关于这些指令如何使用,您可以去参考 https://wiki.cheatengine.org/index.php?title=Auto_Assembler:Commands<br>
 如果你觉得缺少什么命令或者哪个功能有问题可以联系我,我看情况进行修改/添加.<br>
-## 更新内容:2020.1.17
-* 修复了一些明显的bug,如下:
-	* 重汇编指令仍采用字符串替换的方式(会导致一些符号无法解析)
-	* 释放内存操作先于写入内存(会导致被注入的程序崩溃)
-	* `GetAddress`函数会在最后再进行一次内存读取(导致获取到错误的地址)
-* 现在,这些bug已被修复
+## 更新内容:2020.2.8
+* 调整自动汇编引擎符号解析优先级:全局符号 > 常数 > 模块.
+* 优化符号解析速度
+* 当为了与CE一致,当`alloc`未指定`AllocateNearThisAddress`(附近地址)参数时,地址与上一个`alloc`对齐(分配到上一个`alloc`的附近).
+* 修复虚拟标签被识别成常数的bug
 ## 下面是注意事项:
 * XEDParse汇编指令解析器有一些不支持的指令!比如,代码<br>`7FFFFFFE8BFF:`<br>`   jmp 4000000`<br>因为它是远距离跳转,所以自动汇编引擎无法处理此命令.除此之外,还有其它一些指令也不支持,不一一列举了.<br>
 * `cmp [rcx] ,0`这句汇编代码将无法被XEDParse解析,它会提示:`Ambiguous memory size`(模糊的操作数大小),因为您没有指定对`[rcx]`的操作大小,所以应该在`[rcx]`前加上操作数大小 `byte/word/dword/qword ptr`,如:`cmp dword ptr [rcx]`.为什么CE支持`cmp [rcx],0`这样的语法?因为ce对没用限定操作数大小的内存操作默认会编译成 `cmp dword ptr [address],0`.
@@ -23,7 +22,7 @@ A C# Class library like CE's AutoAssembler<br>
 * 当全局内存符号(RegisteredSymbols)出现重复时,自动汇编引擎并不会提示冲突,而是全局内存符号的值覆盖成新申请的值.<br>
 * XEDParse的内存操作数不支持 符号+偏移,例如`[newmem+1000]`.但你或许可以考虑下面这种方式<br>
 ![image](https://github.com/S1nyer/AutoAssembler/tree/master/image/pic1.png)
-* 获取地址优先级:全局符号 > 模块 > 静态地址<br>
+* 获取地址优先级:全局符号 > 常数 > 模块<br>
 * 自动汇编引擎的加减乘法是没有运算优先级的,它是线性运算,所以`Label + 2 * 8`相当于`(Label + 2) * 8`,无论是在自动汇编脚本中还是GetAddress函数中都是如此.<br>
 * 当汇编脚本执行失败时,具体可以通过`GetErrorInfo`函数获取详细错误信息.
 * 更新历史在项目[AutoAssemble/History.md](https://github.com/S1nyer/AutoAssembler/blob/master/AutoAssembler/History.md)内,若想了解可自行查看.

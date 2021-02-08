@@ -19,6 +19,7 @@ namespace Example
             {
                 Console.WriteLine("OpenProcess Failed!");
                 Console.ReadKey();
+                Assembler.Close();
                 return;
             }
             Console.WriteLine("OpenProcess successed!Press anykey to run script which below...");
@@ -35,6 +36,7 @@ namespace Example
             {
                 Console.WriteLine(Assembler.ErrorInfo);
                 Console.ReadKey();
+                Assembler.Close();
                 return;
             };
             //获取符号ThreadMemroy和INJECT的地址。注意：符号名大小写敏感！
@@ -57,6 +59,7 @@ namespace Example
             {
                 Console.WriteLine(Assembler.ErrorInfo);
                 Console.ReadKey();
+                Assembler.Close();
                 return;
             };
         }

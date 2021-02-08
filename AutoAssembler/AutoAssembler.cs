@@ -109,7 +109,7 @@ namespace AutoAssembler
         public string ErrorInfo;
         public string ErrorState;
         public bool OK;
-        private MemoryAPI Memory;
+        public MemoryAPI Memory;
         private byte[] DataBuf = new byte[1024];
         private List<Label> SymbolsPointer;
         private int CodeNumber, AssembledsNumber;
@@ -325,7 +325,7 @@ namespace AutoAssembler
             Assembled assembled = new Assembled();
             Define define;
             List<Define> defines = new List<Define>();
-            Address address = new Address();
+            AddressExpression address = new AddressExpression();
             List<Assembled> assembleds = new List<Assembled>();
             List<string> registers = new List<string>();
             string[] Instr_args;
@@ -333,6 +333,7 @@ namespace AutoAssembler
             ErrorInfo = "";
             ErrorState = "";
             string CurrentParentLabel = null;
+            long LastAllocedAddress = 0;
             bool LastReassemble = false;
             int TotalLine,i, j;
             int seek, size;//用于截取字符
@@ -506,7 +507,7 @@ namespace AutoAssembler
                             ErrorState = "AllocAlreadyExist";
                             goto failed ;
                         }
-                        Memory.AllocMemory(Instr_args[0], 0, StrToInt_10(Instr_args[1]), out alloc);
+                        Memory.AllocMemory(Instr_args[0], LastAllocedAddress, StrToInt_10(Instr_args[1]), out alloc);
                         goto end;
                     }
                     if(Instr_args.Length < 2)
@@ -524,6 +525,8 @@ namespace AutoAssembler
                     label.VirtualLabel = false;
                     label.LabelName = alloc.AllocName;
                     label.Address = alloc.Address;
+                    LastAllocedAddress = alloc.Address;
+                    label.references = new List<Reference>();
                     labels.Add(label);
                     allocs.Add(alloc);
                     continue;
@@ -546,7 +549,7 @@ namespace AutoAssembler
                         ErrorInfo = "Syntax error: " + InstrPrefix + " !";
                         return false;
                     }
-                    long CmpAddress = LabelParse(Instr_args[0], ref labels,0).address;
+                    long CmpAddress = LabelParse(Instr_args[0], ref labels,0).Address;
                     if(CmpAddress == 0)
                     {
                         ErrorInfo = string.Format("Cannot find symbol:{0}!Error code:\r\n{1}", Instr_args[0], Currentline);
@@ -674,7 +677,7 @@ namespace AutoAssembler
                     address = LabelParse(s, ref labels, CurrentAddress);
                     if (address.isVirtualLabel && address.Multiple)
                     {
-                        ErrorInfo = ("Virtual label cannot add offset before have valid value: " + address.Label + " !" + " Code: " + Codes[i]);
+                        ErrorInfo = ("Virtual label cannot add offset before have valid value: " + address.Label + " !\r\n" + Codes[i]);
                         ErrorState = "InvalidCode";
                         goto failed;
                     }
@@ -712,7 +715,7 @@ namespace AutoAssembler
                     {
                         CurrentParentLabel = address.Label;
                     }
-                    CurrentAddress = address.address;
+                    CurrentAddress = address.Address;
                 }
             }
             //汇编指令已处理完毕,检查是否需要重汇编
@@ -796,10 +799,10 @@ namespace AutoAssembler
                 if(codes[i][codes[i].Length-1] == ':')
                 {
                     s = codes[i].Substring(0, codes[i].IndexOf(":")).Trim();
-                    Address adrex = LabelParse(s, ref labels, 0);
-                    if (string.IsNullOrEmpty(adrex.Label))
+                    AddressExpression adexp = LabelParse(s, ref labels, 0);
+                    if (string.IsNullOrEmpty(adexp.Label))
                         continue;
-                    int x = FindLabelIndex(adrex.Label, ref labels);
+                    int x = FindLabelIndex(adexp.Label, ref labels);
                     if (string.IsNullOrEmpty(labels[x].ParentLabel))
                     {
                         return labels[x].LabelName;
@@ -881,10 +884,10 @@ namespace AutoAssembler
                 if(code[code.Length-1] == ':')
                 {
                     string s = code.Substring(0, code.IndexOf(":")).Trim();
-                    Address adrex = LabelParse(s, ref labels, CurrentAddress);
-                    if(adrex.address != 0)
+                    AddressExpression adrex = LabelParse(s, ref labels, CurrentAddress);
+                    if(adrex.Address != 0)
                     {
-                        CurrentAddress = adrex.address;
+                        CurrentAddress = adrex.Address;
                     }
                     else
                     {
@@ -1398,18 +1401,15 @@ namespace AutoAssembler
                     }
                     if (temp == 0)
                     {
-                        //未找到到指定符号,判断其是否为模块
-                        temp = Memory.GetModuleBaseaddress(numbers[x].Value);
-                        if (temp == 0)
+                        if (IsHexadecimal(numbers[x].Value))
                         {
-                            //未找到模块,判断是否为静态地址
-                            try
+                            temp = StrToLong_16(numbers[x].Value);
+                        }
+                        else
+                        {
+                            temp = Memory.GetModuleBaseaddress(numbers[x].Value);
+                            if (temp == 0)
                             {
-                                temp = StrToLong_16(numbers[x].Value);
-                            }
-                            catch (FormatException)
-                            {
-                                //非全局符号,模块及静态地址
                                 return 0;
                             }
                         }
@@ -1488,24 +1488,21 @@ namespace AutoAssembler
                     }
                     if (temp == 0)
                     {
-                        //未找到到指定符号,判断其是否为模块
-                        temp = Memory.GetModuleBaseaddress(numbers[x].Value);
-                        if (temp == 0)
+                        if (IsHexadecimal(numbers[x].Value))
                         {
-                            //未找到模块,判断是否为静态地址
-                            try
-                            {
-                                temp = StrToLong_16(numbers[x].Value);
-                            }
-                            catch (FormatException)
-                            {
-                                //非全局符号,模块及静态地址
-                                return "表达式错误!无法识别的符号:" + numbers[x].Value;
-                            }
+                            temp = StrToLong_16(numbers[x].Value);
                         }
                         else
                         {
-                            TempStr = TempStr.Replace(numbers[x].Value, temp.ToString("X"));
+                            temp = Memory.GetModuleBaseaddress(numbers[x].Value);
+                            if (temp == 0)
+                            {
+                                return "表达式错误!无法识别的符号:" + numbers[x].Value;
+                            }
+                            else
+                            {
+                                TempStr = TempStr.Replace(numbers[x].Value, temp.ToString("X"));
+                            }
                         }
                     }
                     switch (numbers[x].Type)
@@ -1822,6 +1819,25 @@ namespace AutoAssembler
             else
                 return false;
         }
+        public static bool IsHexadecimal(string str)
+        {
+            if(str[0] == '$' || str[0] == '#')
+            {
+                str = str.Remove(0,1);
+            }
+            foreach (char word in str)
+            {
+                if ((word >= 0x30 && word <= 0x39) ||
+                    (word >= 0x41 && word <= 0x46) ||
+                    (word >= 0x61 && word <= 0x66))
+                {
+                    continue;
+                }
+                else
+                    return false;
+            }
+            return true;
+        }
         private bool SymbolParse(string exp,out long value)
         {
             long reserved = 0,CurrentAddress = 0;
@@ -1857,16 +1873,16 @@ namespace AutoAssembler
                 CurrentAddress = GetAddressBySymbolName(numbers[i].Value, ref SymbolsPointer);
                 if (CurrentAddress == 0)
                 {
-                    CurrentAddress = Memory.GetModuleBaseaddress(numbers[i].Value);
-                    if (CurrentAddress == 0)
+                    if (IsHexadecimal(numbers[i].Value))
                     {
-                        try
+                        CurrentAddress = reserved;
+                        temp = StrToLong_16(numbers[i].Value);
+                    }
+                    else
+                    {
+                        temp = Memory.GetModuleBaseaddress(numbers[i].Value);
+                        if(temp == 0)
                         {
-                            CurrentAddress = reserved;
-                            temp = StrToLong_16(numbers[i].Value);
-                        }
-                        catch (FormatException)
-                        {//不是数字和模块,应为未定义标签
                             value = 0;
                             return false;
                         }
@@ -1892,15 +1908,16 @@ namespace AutoAssembler
             CurrentAddress = GetAddressBySymbolName(numbers[0].Value, ref SymbolsPointer);
             if (CurrentAddress == 0)
             {
-                CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
-                if (CurrentAddress == 0)
+                if (IsHexadecimal(numbers[0].Value))
                 {
-                    try
+                    CurrentAddress = reserved;
+                    CurrentAddress = StrToLong_16(numbers[0].Value);
+                }
+                else
+                {
+                    CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
+                    if (CurrentAddress == 0)
                     {
-                        CurrentAddress = StrToLong_16(numbers[0].Value);
-                    }
-                    catch (FormatException)
-                    {//不是数字和模块,应为未定义标签
                         value = 0;
                         return false;
                     }
@@ -1909,33 +1926,40 @@ namespace AutoAssembler
             value = CurrentAddress;
             return true;
         }
-        private Address LabelParse(string expression,ref List<Label> labels, long CurrentAddress)
+        private AddressExpression LabelParse(string expression,ref List<Label> labels, long CurrentAddress)
         {
             long reserved = CurrentAddress;
-            Address address = new Address
+            AddressExpression address = new AddressExpression
             {
                 isVirtualLabel = false
             };
+            AddressExpression tempAdexp;
             MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(expression);
             if (numbers.Length == 1) goto label;
             for (int i = 0; i < numbers.Length; ++i)
             {
                 long temp = 0;
                 reserved = CurrentAddress;
-                CurrentAddress = GetAddressByLabelName(numbers[i].Value,ref labels);
-                if (CurrentAddress == 0)
+                tempAdexp = GetLabelInfo(numbers[i].Value, ref labels);
+                if (!tempAdexp.isLabel)
                 {
-                    CurrentAddress = Memory.GetModuleBaseaddress(numbers[i].Value);
-                    if(CurrentAddress == 0)
+                    if (tempAdexp.isVirtualLabel)
                     {
-                        try
+                        address.Label = numbers[i].Value;
+                        address.Multiple = true;
+                        address.isVirtualLabel = true;
+                        return address;
+                    }
+                    if (IsHexadecimal(numbers[i].Value))
+                    {
+                        CurrentAddress = reserved;
+                        temp = StrToLong_16(numbers[i].Value);
+                    }
+                    else
+                    {
+                        CurrentAddress = Memory.GetModuleBaseaddress(numbers[i].Value);
+                        if (CurrentAddress == 0)
                         {
-                            CurrentAddress = reserved;
-                            temp = StrToLong_16(numbers[i].Value);
-                        }
-                        catch (FormatException)
-                        {//不是数字和模块,应为未定义标签
-                            CurrentAddress = reserved;
                             address.Label = numbers[i].Value;
                             address.isVirtualLabel = true;
                             address.Multiple = true;
@@ -1946,6 +1970,7 @@ namespace AutoAssembler
                 else
                 {
                     address.Label = numbers[i].Value;
+                    CurrentAddress = tempAdexp.Address;
                 }
                 switch (numbers[i].Type)
                 {
@@ -1960,35 +1985,44 @@ namespace AutoAssembler
                         break;
                 }
             }
-            address.address = CurrentAddress;
+            address.Address = CurrentAddress;
             address.Multiple = true;
             return address;
         //不涉及到多重运算
         label:
-            CurrentAddress = GetAddressByLabelName(numbers[0].Value,ref labels);
-            if (CurrentAddress == 0)
+            tempAdexp = GetLabelInfo(numbers[0].Value,ref labels);
+            if (!tempAdexp.isLabel)
             {
-                CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
-                if(CurrentAddress == 0)
+                if (tempAdexp.isVirtualLabel)
                 {
-                    try
+                    address.Label = numbers[0].Value;
+                    address.isVirtualLabel = true;
+                    return address;
+                }
+                if (IsHexadecimal(numbers[0].Value))
+                {
+                    CurrentAddress = reserved;
+                    CurrentAddress = StrToLong_16(numbers[0].Value);
+                }
+                else
+                {
+                    CurrentAddress = Memory.GetModuleBaseaddress(numbers[0].Value);
+                    if (CurrentAddress == 0)
                     {
-                        CurrentAddress = StrToLong_16(numbers[0].Value);
-                    }
-                    catch (FormatException)
-                    {//不是数字和模块,应为未定义标签
                         address.Label = numbers[0].Value;
-                        address.address = reserved;
                         address.isVirtualLabel = true;
-                        address.Multiple = false;
                         return address;
                     }
                 }
             }
+            else
+            {
+                CurrentAddress = tempAdexp.Address;
+            }
             address.Label = numbers[0].Value;
             address.isVirtualLabel = false;
             address.Multiple = false;
-            address.address = CurrentAddress;
+            address.Address = CurrentAddress;
             return address;
         }
         private bool GuessVirtualLabel(ref List<Label> labels,ref string[] codes)
@@ -2033,10 +2067,11 @@ namespace AutoAssembler
             }
             return true;
         }
-        struct Address
+        struct AddressExpression
         {
-            public long address;
+            public long Address;
             public string Label;
+            public bool isLabel;
             public bool isVirtualLabel;
             public bool Multiple;
         }
@@ -2136,6 +2171,31 @@ namespace AutoAssembler
                 }
             }
             return false;
+        }
+        private AddressExpression GetLabelInfo(string LabelName, ref List<Label> Labels)
+        {
+            AddressExpression address = new AddressExpression();
+            foreach(Label label in Labels)
+            {
+                if (LabelName == label.LabelName)
+                {
+                    if (label.VirtualLabel)
+                    {
+                        address.isLabel = false;
+                        address.isVirtualLabel = true;
+                        address.Address = label.GuessAddress;
+                    }
+                    else
+                    {
+                        address.isLabel = true;
+                        address.isVirtualLabel = false;
+                        address.Address = label.Address;
+                    }
+                    return address;
+                }
+            }
+            address.isLabel = false;
+            return address;
         }
         private long GetAddressByLabelName(string LabelName,ref List<Label> Labels)
         {
