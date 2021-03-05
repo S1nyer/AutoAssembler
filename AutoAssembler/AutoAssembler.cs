@@ -2118,7 +2118,7 @@ namespace AutoAssembler
                     }
                     else
                     {
-                        temp = GetAddressByLabelName(Substring(codes[j], 0, codes[j].Length - 1), ref labels);
+                        temp = LabelParse(Substring(codes[j], 0, codes[j].Length - 1), ref labels, 0).Address;
                         if (temp == 0)
                             continue;
                         LabelParentAddress = temp;
