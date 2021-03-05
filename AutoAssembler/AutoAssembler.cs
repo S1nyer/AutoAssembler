@@ -1003,16 +1003,16 @@ namespace AutoAssembler
             Dword,
             Qword
         }
-        private byte[] DataParse(string DataValue,DataType type)
+        private byte[] DataParse(string DataValue, DataType type)
         {
             int Pre, Cur, DataIndex;
             string Instr = DataValue;
             DataValue = DataValue.Substring(3, DataValue.Length - 3);
             var ConvertedVar = 0L;
-            byte[] Tempbuf,RetVar;
+            byte[] Tempbuf, RetVar;
             Pre = Cur = 0;
             DataIndex = 0;
-            while(Cur < DataValue.Length)
+            while (Cur < DataValue.Length)
             {
                 switch (DataValue[Cur])
                 {
@@ -1027,29 +1027,46 @@ namespace AutoAssembler
                         {
                             try
                             {
+                                string text;
+                                text = DataValue.Substring(Pre, Cur - Pre);
                                 switch (type)
                                 {
                                     case DataType.Byte:
-                                        ConvertedVar = Convert.ToByte(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        ConvertedVar = Convert.ToByte(text, 16);
                                         DataBuf[DataIndex] = (byte)ConvertedVar;
                                         DataIndex++;
                                         break;
                                     case DataType.Word:
-                                        ConvertedVar = Convert.ToInt16(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        ConvertedVar = Convert.ToInt16(text, 16);
                                         Tempbuf = BitConverter.GetBytes((Int16)ConvertedVar);
                                         DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1];
                                         DataIndex += 2;
                                         break;
                                     case DataType.Dword:
-                                        ConvertedVar = Convert.ToInt32(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        if (IsFloatVar(text))
+                                        {
+                                            Tempbuf = BitConverter.GetBytes(Convert.ToSingle(text));
+                                            DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
+                                            DataIndex += 4;
+                                            break;
+                                        }
+                                        ConvertedVar = Convert.ToInt32(text, 16);
                                         Tempbuf = BitConverter.GetBytes((Int32)ConvertedVar);
                                         DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
                                         DataIndex += 4;
                                         break;
                                     case DataType.Qword:
-                                        ConvertedVar = Convert.ToInt64(DataValue.Substring(Pre, Cur - Pre), 16);
+                                        if (IsFloatVar(text))
+                                        {
+                                            Tempbuf = BitConverter.GetBytes(Convert.ToDouble(text));
+                                            DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
+                                            DataIndex += 8;
+                                            break;
+                                        }
+                                        ConvertedVar = Convert.ToInt64(text, 16);
                                         Tempbuf = BitConverter.GetBytes((Int64)ConvertedVar);
                                         DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
+                                        DataIndex += 8;
                                         break;
                                 }
                                 Pre = Cur + 1;
@@ -1074,7 +1091,7 @@ namespace AutoAssembler
                         bool ended = false;
                         Cur++;
                         StringBuilder builder = new StringBuilder();
-                        while(Cur < DataValue.Length)
+                        while (Cur < DataValue.Length)
                         {
                             if (ended)
                                 break;
@@ -1099,7 +1116,7 @@ namespace AutoAssembler
                                             ErrorInfo = string.Format("Define data instruction only support ASCII and Unicode!Please use db or dw to define string!In code:\r\n{0}", Instr);
                                             return null;
                                     }
-                                    while(DataValue[Cur] != ' '&& DataValue[Cur] != ',')
+                                    while (DataValue[Cur] != ' ' && DataValue[Cur] != ',')
                                     {
                                         Cur++;
                                     }
@@ -1149,7 +1166,7 @@ namespace AutoAssembler
                         continue;
                 }
             }
-            if(Cur - Pre == 0)
+            if (Cur - Pre == 0)
             {
                 RetVar = new byte[DataIndex];
                 Array.Copy(DataBuf, RetVar, DataIndex);
@@ -1173,12 +1190,26 @@ namespace AutoAssembler
                             DataIndex += 2;
                             break;
                         case DataType.Dword:
+                            if (IsFloatVar(DataValue.Substring(Pre, Cur - Pre)))
+                            {
+                                Tempbuf = BitConverter.GetBytes(Convert.ToSingle(DataValue.Substring(Pre, Cur - Pre)));
+                                DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
+                                DataIndex += 4;
+                                break;
+                            }
                             ConvertedVar = Convert.ToInt32(DataValue.Substring(Pre, Cur - Pre), 16);
                             Tempbuf = BitConverter.GetBytes((Int32)ConvertedVar);
                             DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3];
                             DataIndex += 4;
                             break;
                         case DataType.Qword:
+                            if (IsFloatVar(DataValue.Substring(Pre, Cur - Pre)))
+                            {
+                                Tempbuf = BitConverter.GetBytes(Convert.ToDouble(DataValue.Substring(Pre, Cur - Pre)));
+                                DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
+                                DataIndex += 8;
+                                break;
+                            }
                             ConvertedVar = Convert.ToInt64(DataValue.Substring(Pre, Cur - Pre), 16);
                             Tempbuf = BitConverter.GetBytes((Int64)ConvertedVar);
                             DataBuf[DataIndex] = Tempbuf[0]; DataBuf[DataIndex + 1] = Tempbuf[1]; DataBuf[DataIndex + 2] = Tempbuf[2]; DataBuf[DataIndex + 3] = Tempbuf[3]; DataBuf[DataIndex + 4] = Tempbuf[4]; DataBuf[DataIndex + 5] = Tempbuf[5]; DataBuf[DataIndex + 6] = Tempbuf[6]; DataBuf[DataIndex + 7] = Tempbuf[7];
@@ -1188,7 +1219,7 @@ namespace AutoAssembler
                 catch (FormatException)
                 {
                     ErrorState = "NumberFormatException";
-                    ErrorInfo = string.Format("Invalid number:{0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
+                    ErrorInfo = string.Format("Invalid value:{0},In code:\r\n{1}", DataValue.Substring(Pre, Cur - Pre), Instr);
                     return null;
                 }
                 catch (OverflowException)
@@ -1821,9 +1852,9 @@ namespace AutoAssembler
         }
         public static bool IsHexadecimal(string str)
         {
-            if(str[0] == '$' || str[0] == '#')
+            if (str[0] == '$' || str[0] == '#')
             {
-                str = str.Remove(0,1);
+                str = str.Remove(0, 1);
             }
             foreach (char word in str)
             {
@@ -1833,38 +1864,68 @@ namespace AutoAssembler
                 {
                     continue;
                 }
-                else
-                    return false;
+                if (word == '+' || word == '-')
+                    continue;
+                return false;
             }
             return true;
         }
-        private bool SymbolParse(string exp,out long value)
+        public static bool IsFloatVar(string str)
         {
-            long reserved = 0,CurrentAddress = 0;
+            bool Dot = false;
+            char word;
+            for (int i = 0; i < str.Length; i++)
+            {
+                word = str[i];
+                if (word >= 0x30 && word <= 0x39)
+                    continue;
+                if (word == '.')
+                {
+                    if (Dot)
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        Dot = true;
+                        continue;
+                    }
+                }
+                if (word == 'f' || word == 'F')
+                {
+                    if (str.Length - 1 == i)
+                        return true;
+                    return false;
+                }
+                if (word == '+' || word == '-')
+                    continue;
+                return false;
+            }
+            return Dot;
+        }
+        private bool SymbolParse(string exp, out long value)
+        {
+            long reserved = 0, CurrentAddress = 0;
             MemoryAPI.Number[] numbers = MemoryAPI.OperationParse(exp);
             string tempstr = numbers[0].Value;
             if (numbers.Length == 1)
             {
-                try
+                if (IsFloatVar(tempstr))
                 {
-                    if (tempstr.IndexOf('.') != -1)
+                    if (tempstr[tempstr.Length - 1] == 'f' || tempstr[tempstr.Length - 1] == 'F')
                     {
-                        if (tempstr[tempstr.Length - 1] == 'f' || tempstr[tempstr.Length - 1] == 'F')
-                        {
-                            float singlef = Convert.ToSingle(tempstr.Substring(0, tempstr.Length - 1));
-                            value = BitConverter.ToInt32(BitConverter.GetBytes(singlef), 0);
-                            return true;
-                        }
-                        double doublef = Convert.ToDouble(tempstr.Substring(0, tempstr.Length - 1));
-                        value = BitConverter.ToInt64(BitConverter.GetBytes(doublef), 0);
+                        float singlef = Convert.ToSingle(tempstr.Substring(0, tempstr.Length - 1));
+                        value = BitConverter.ToInt32(BitConverter.GetBytes(singlef), 0);
                         return true;
                     }
+                    double doublef = Convert.ToDouble(tempstr.Substring(0, tempstr.Length - 1));
+                    value = BitConverter.ToInt64(BitConverter.GetBytes(doublef), 0);
+                    return true;
                 }
-                catch (FormatException)
+                else
                 {
                     goto label;
                 }
-                goto label;
             }
             for (int i = 0; i < numbers.Length; ++i)
             {
@@ -1881,7 +1942,7 @@ namespace AutoAssembler
                     else
                     {
                         temp = Memory.GetModuleBaseaddress(numbers[i].Value);
-                        if(temp == 0)
+                        if (temp == 0)
                         {
                             value = 0;
                             return false;
