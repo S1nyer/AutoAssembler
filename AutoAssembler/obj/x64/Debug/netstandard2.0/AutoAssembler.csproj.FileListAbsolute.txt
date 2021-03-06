@@ -1,0 +1,9 @@
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.csprojAssemblyReference.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.AssemblyInfo.cs
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\bin\x64\Debug\netstandard2.0\AutoAssembler.deps.json
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\bin\x64\Debug\netstandard2.0\AutoAssembler.dll
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\bin\x64\Debug\netstandard2.0\AutoAssembler.pdb
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.dll
+C:\Users\Administrator\Documents\GitHub\AutoAssembler\AutoAssembler\obj\x64\Debug\netstandard2.0\AutoAssembler.pdb

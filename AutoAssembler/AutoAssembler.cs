@@ -1681,6 +1681,7 @@ namespace AutoAssembler
             bool Odd = false;
             Label MainLabel;
             long MainResult;
+            string error = "";
             if(aobs.Length == 1)
             {
                 if(aobs[0].Module == null)
@@ -1688,12 +1689,12 @@ namespace AutoAssembler
                     MainResult = Memory.AobScan(aobs[0].AobString);
                     goto Result;
                 }
-                MainResult = Memory.AobScanModule(aobs[0].Module, aobs[0].AobString);
+                MainResult = Memory.AobScanModule(aobs[0].Module, aobs[0].AobString,out error);
             Result:
                 if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
-                    ErrorInfo = "Cannot find AOB's address!Code:" + aobs[0].OriginCode;
+                    ErrorInfo = string.Format("AOBScanFailed!In code:{0}\r\n{1}",aobs[0].OriginCode, error);
                     return false;
                 }
                 MainLabel = new Label()
@@ -1721,7 +1722,7 @@ namespace AutoAssembler
                 }
                 else
                 {
-                    task = new Task<long>(() => Memory.AobScanModule(aobs[TaskIndex].Module, aobs[TaskIndex].AobString));
+                    task = new Task<long>(() => Memory.AobScanModule(aobs[TaskIndex].Module, aobs[TaskIndex].AobString, out error));
                 }
                 task.Start();
                 if (aobs[CurrentIndex].Module == null)
@@ -1729,12 +1730,12 @@ namespace AutoAssembler
                     MainResult = Memory.AobScan(aobs[0].AobString);
                     goto Result;
                 }
-                MainResult = Memory.AobScanModule(aobs[CurrentIndex].Module, aobs[CurrentIndex].AobString);
+                MainResult = Memory.AobScanModule(aobs[CurrentIndex].Module, aobs[CurrentIndex].AobString, out error);
             Result:
                 if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
-                    ErrorInfo = "Cannot find AOB's address!Code:" + aobs[CurrentIndex].OriginCode;
+                    ErrorInfo = string.Format("AOBScanFailed!In code:{0}\r\n{1}", aobs[0].OriginCode, error);
                     return false;
                 }
                 while (!task.IsCompleted)
@@ -1745,7 +1746,7 @@ namespace AutoAssembler
                 if (TaskResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
-                    ErrorInfo = "Cannot find AOB's address!Code:" + aobs[TaskIndex].OriginCode;
+                    ErrorInfo = string.Format("AOBScanFailed!In code:{0}\r\n{1}", aobs[0].OriginCode, error);
                     return false;
                 }
                 MainLabel = new Label()
@@ -1773,12 +1774,12 @@ namespace AutoAssembler
                     MainResult = Memory.AobScan(aobs[MainMaxIndex].AobString);
                     goto Result;
                 }
-                MainResult = Memory.AobScanModule(aobs[MainMaxIndex].Module, aobs[MainMaxIndex].AobString);
+                MainResult = Memory.AobScanModule(aobs[MainMaxIndex].Module, aobs[MainMaxIndex].AobString, out error);
             Result:
                 if (MainResult == 0)
                 {
                     ErrorState = "AOBScanFailed";
-                    ErrorInfo = "Cannot find AOB's address!Code:" + aobs[MainMaxIndex].OriginCode;
+                    ErrorInfo = string.Format("AOBScanFailed!In code:{0}\r\n{1}", aobs[0].OriginCode, error);
                     return false;
                 }
                 MainLabel = new Label()

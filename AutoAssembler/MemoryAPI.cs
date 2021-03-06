@@ -507,10 +507,8 @@ namespace AutoAssembler
         }
         public long GetModuleBaseaddress(string DLLname)
         {
-            Number[] numbers = OperationParse(DLLname);
-            if(Case_Sensitive(ref numbers[0].Value))
+            if(Case_Sensitive(ref DLLname))
             {
-                DLLname = numbers[0].Value;
                 foreach (ProcessModule m in ProcessModuleInfo)
                 {
                     if (m.ModuleName == DLLname)
@@ -518,7 +516,7 @@ namespace AutoAssembler
                 }
                 return 0;
             }
-            DLLname = numbers[0].Value.ToUpper();
+            DLLname = DLLname.ToUpper();
             foreach (ProcessModule m in ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper() == DLLname)
@@ -528,10 +526,8 @@ namespace AutoAssembler
         }
         public long GetModuleSize(string DLLname)
         {
-            Number[] numbers = OperationParse(DLLname);
-            if (Case_Sensitive(ref numbers[0].Value))
+            if (Case_Sensitive(ref DLLname))
             {
-                DLLname = numbers[0].Value;
                 foreach (ProcessModule m in ProcessModuleInfo)
                 {
                     if (m.ModuleName == DLLname)
@@ -539,7 +535,7 @@ namespace AutoAssembler
                 }
                 return 0;
             }
-            DLLname = numbers[0].Value.ToUpper();
+            DLLname = DLLname.ToUpper();
             foreach (ProcessModule m in ProcessModuleInfo)
             {
                 if (m.ModuleName.ToUpper() == DLLname)
@@ -626,7 +622,7 @@ namespace AutoAssembler
             }
             return result;
         }
-        private long ModuleParse(string Module)
+        private long ModuleParse(ref string Module)
         {
             long temp = 0;
             long Address = 0;
@@ -646,6 +642,10 @@ namespace AutoAssembler
                         //非模块及静态地址
                         return 0;
                     }
+                }
+                else
+                {
+                    Module = numbers[i].Value;
                 }
                 switch (numbers[i].Type)
                 {
@@ -721,12 +721,19 @@ namespace AutoAssembler
             }
             return 0;
         }
-        public long AobScanModule(string Module, string MarkCode)
+        public long AobScanModule(string Module, string MarkCode,out string error)
         {
+            error = "";
             if (String.IsNullOrEmpty(MarkCode))
+            {
+                error = "Empty AOB string!";
                 return 0;
+            }
             if (MarkCode.Replace(" ", "").Length % 2 != 0)
+            {
+                error = "Invalid AOB string!";
                 return 0;
+            }
             //定义Sunday匹配算法所需的变量
             short[] CodeArray = HexStringToIntArray(MarkCode);
             int i, j, k;
@@ -736,19 +743,33 @@ namespace AutoAssembler
             //定义模块信息及有关变量
             long BeginAddress, EndAddress, CurrentAddress;
             byte[] Buffer;
-            BeginAddress = ModuleParse(Module);
+            BeginAddress = GetModuleBaseaddress(Module);
             if (BeginAddress == 0)
-                return 0;
-            EndAddress = GetModuleBaseaddress(Module) + GetModuleSize(Module);
+            {
+                BeginAddress = ModuleParse(ref Module);
+                if (BeginAddress == 0)
+                {
+                    error = string.Format("Invalid module:{0}!", Module);
+                    return 0;
+                }
+
+            }
+            EndAddress = BeginAddress + GetModuleSize(Module);
             CurrentAddress = BeginAddress;
             MEMORY_BASIC_INFORMATION mbi = new MEMORY_BASIC_INFORMATION();
             while (CurrentAddress < EndAddress)
             {
                 if (VirtualQueryEx(ProcessHandle, CurrentAddress, ref mbi, Marshal.SizeOf(mbi)) == 0)
+                {
+                    error = "VirtualQueryEx Error!";
                     return 0;
+                }
                 Buffer = new byte[mbi.RegionSize];
                 if (!ReadMemoryByteSet(ProcessHandle, CurrentAddress, Buffer, mbi.RegionSize, 0))
+                {
+                    error = "ReadProcessMemory Error!";
                     return 0;
+                }
                 BufferLen = Buffer.Length;
                 i = j = 0;
                 while (i < BufferLen)
@@ -769,6 +790,7 @@ namespace AutoAssembler
                 }
                 CurrentAddress += mbi.RegionSize;
             }
+            error = "Can not find match bytes";
             return 0;
         }
         public byte[] HexToBytes(string HexString)
