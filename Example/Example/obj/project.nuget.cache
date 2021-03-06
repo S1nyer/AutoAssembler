@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "4CzcLTwggjY8rzlu3iP2EnxXbARsA5wCqEESKa/n19EvysFdy+al5Fopw9Rf2qaT5Lk65FVtnb71RReYjsiOsQ==",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Administrator\\Documents\\GitHub\\AutoAssembler\\Example\\Example\\Example.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Administrator\\.nuget\\packages\\nunit\\3.12.0\\nunit.3.12.0.nupkg.sha512"
+  ],
+  "logs": []
+}
